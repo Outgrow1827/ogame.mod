@@ -251,6 +251,60 @@ func GetEspionageReportHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(espionageReport))
 }
 
+// GetCombatReportSummaryForFleetHandler ...
+func GetCombatReportSummaryForFleetHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	fleetID, err := utils.ParseI64(c.Param("fleetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid fleetID"))
+	}
+	combatReport, err := bot.GetCombatReportSummaryForFleet(ogame.FleetID(fleetID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(combatReport))
+}
+
+// GetCombatReportSummaryForHandler ...
+func GetCombatReportSummaryForHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	galaxy, err := utils.ParseI64(c.Param("galaxy"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid galaxy"))
+	}
+	system, err := utils.ParseI64(c.Param("system"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid system"))
+	}
+	position, err := utils.ParseI64(c.Param("position"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid position"))
+	}
+	combatReport, err := bot.GetCombatReportSummaryFor(ogame.Coordinate{Type: ogame.PlanetType, Galaxy: galaxy, System: system, Position: position})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(combatReport))
+}
+
+// GetExpeditionMessagesHandler ...
+func GetExpeditionMessagesHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	maxPage := int64(1)
+	if v := c.QueryParam("maxPage"); v != "" {
+		parsed, err := utils.ParseI64(v)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid maxPage"))
+		}
+		maxPage = parsed
+	}
+	messages, err := bot.GetExpeditionMessages(maxPage)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(messages))
+}
+
 // GetEspionageReportForHandler ...
 func GetEspionageReportForHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
@@ -814,6 +868,23 @@ func GetProductionHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(res))
 }
 
+// GetArtifactsHandler ...
+func GetArtifactsHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+	collected, max, err := bot.GetArtifacts(ogame.CelestialID(planetID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(struct {
+		Collected int64 `json:"collected"`
+		Max       int64 `json:"max"`
+	}{Collected: collected, Max: max}))
+}
+
 // ConstructionsBeingBuiltHandler ...
 func ConstructionsBeingBuiltHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
@@ -1098,6 +1169,12 @@ func GetAlliancePageContentHandler(c echo.Context) error {
 }
 
 func replaceHostname(bot *OGame, html []byte) []byte {
+	// bot.cache.serverURL is empty when the session isn't (or is no longer) fully
+	// logged in - bytes.Replace with an empty "old" argument matches between every
+	// byte, corrupting the whole page. Bail out untouched instead.
+	if bot.cache.serverURL == "" {
+		return html
+	}
 	serverURLBytes := []byte(bot.cache.serverURL)
 	apiNewHostnameBytes := []byte(bot.apiNewHostname)
 	escapedServerURL := bytes.Replace(serverURLBytes, []byte("/"), []byte(`\/`), -1)
@@ -1164,9 +1241,20 @@ func GetFromGameHandler(c echo.Context) error {
 	if len(c.QueryParams()) > 0 {
 		vals = c.QueryParams()
 	}
-	pageHTML, _ := bot.GetPageContent(vals)
+	pageHTML, err := bot.GetPageContent(vals)
+	if err != nil {
+		c.Logger().Error(err)
+	}
 	pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = removeCookiesBanner(pageHTML)
+	// Ajax pages requested with asJson=1 (e.g. page=ajax&component=empire&asJson=1) return plain JSON,
+	// not HTML - serving them as text/html regardless broke callers (browser userscripts, the in-game
+	// messages popup, etc.) doing response.json() against this proxy. The previously-discarded error is
+	// now logged instead of silently swallowed, so a failed manual-browsing fetch through this proxy
+	// leaves a trace instead of just returning an empty 200.
+	if vals.Get("asJson") == "1" {
+		return c.Blob(http.StatusOK, "application/json", pageHTML)
+	}
 	return c.HTMLBlob(http.StatusOK, pageHTML)
 }
 
@@ -1178,9 +1266,15 @@ func PostToGameHandler(c echo.Context) error {
 		vals = c.QueryParams()
 	}
 	payload, _ := c.FormParams()
-	pageHTML, _ := bot.PostPageContent(vals, payload)
+	pageHTML, err := bot.PostPageContent(vals, payload)
+	if err != nil {
+		c.Logger().Error(err)
+	}
 	pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = removeCookiesBanner(pageHTML)
+	if vals.Get("asJson") == "1" {
+		return c.Blob(http.StatusOK, "application/json", pageHTML)
+	}
 	return c.HTMLBlob(http.StatusOK, pageHTML)
 }
 

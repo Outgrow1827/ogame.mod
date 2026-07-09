@@ -323,6 +323,14 @@ func (b *Prioritize) GetProduction(celestialID ogame.CelestialID) ([]ogame.Quant
 	return b.bot.getProduction(celestialID)
 }
 
+// GetArtifacts gets the current/max artifacts (item fragments) counter from the
+// Lifeform Research page.
+func (b *Prioritize) GetArtifacts(celestialID ogame.CelestialID) (int64, int64, error) {
+	b.begin("GetArtifacts")
+	defer b.done()
+	return b.bot.getArtifacts(celestialID)
+}
+
 // GetCachedResearch gets the player cached researches information
 func (b *Prioritize) GetCachedResearch() ogame.Researches {
 	b.begin("GetCachedResearch")

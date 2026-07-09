@@ -451,6 +451,12 @@ func (b *OGame) GetProduction(celestialID ogame.CelestialID) ([]ogame.Quantifiab
 	return b.WithPriority(taskRunner.Normal).GetProduction(celestialID)
 }
 
+// GetArtifacts gets the current/max artifacts (item fragments) counter from the
+// Lifeform Research page.
+func (b *OGame) GetArtifacts(celestialID ogame.CelestialID) (int64, int64, error) {
+	return b.WithPriority(taskRunner.Normal).GetArtifacts(celestialID)
+}
+
 // GetCachedResearch returns cached researches
 func (b *OGame) GetCachedResearch() ogame.Researches {
 	return b.WithPriority(taskRunner.Normal).GetCachedResearch()

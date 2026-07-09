@@ -295,6 +295,12 @@ POST /bot/fleets/:fleetID/cancel
 POST /bot/delete-report/:messageID
 POST /bot/delete-all-espionage-reports
 POST /bot/delete-all-reports/:tabIndex
+GET  /bot/espionage-report
+GET  /bot/espionage-report/:msgid
+GET  /bot/espionage-report/:galaxy/:system/:position
+GET  /bot/combat-report/fleet/:fleetID
+GET  /bot/combat-report/:galaxy/:system/:position
+GET  /bot/expedition-messages
 GET  /bot/attacks
 GET  /bot/galaxy-infos/:galaxy/:system
 GET  /bot/get-research

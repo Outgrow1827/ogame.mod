@@ -157,6 +157,66 @@ func main() {
 			Value:   "device_name",
 			Sources: cli.EnvVars("OGAMED_DEVICENAME"),
 		},
+		&cli.StringFlag{
+			Name:    "device-system",
+			Usage:   "Set the Device System (Android, Windows, \"MacOSX\", Linux, iOS)",
+			Value:   "windows",
+			Sources: cli.EnvVars("OGAMED_DEVICESYSTEM"),
+		},
+		&cli.StringFlag{
+			Name:    "device-browser",
+			Usage:   "Set the Device Browser (Chrome, Opera, Safari, Edge, Firefox)",
+			Value:   "Chrome",
+			Sources: cli.EnvVars("OGAMED_DEVICEBROWSER"),
+		},
+		&cli.IntFlag{
+			Name:    "device-memory",
+			Usage:   "Set the Device Memory",
+			Value:   8,
+			Sources: cli.EnvVars("OGAMED_DEVICEMEMORY"),
+		},
+		&cli.IntFlag{
+			Name:    "device-concurrency",
+			Usage:   "Set the Device Concurrency",
+			Value:   16,
+			Sources: cli.EnvVars("OGAMED_DEVICECONCURRENCY"),
+		},
+		&cli.IntFlag{
+			Name:    "device-color",
+			Usage:   "Set the Device Color depth",
+			Value:   16,
+			Sources: cli.EnvVars("OGAMED_DEVICECOLOR"),
+		},
+		&cli.IntFlag{
+			Name:    "device-width",
+			Usage:   "Set the Device Width",
+			Value:   1900,
+			Sources: cli.EnvVars("OGAMED_DEVICEWIDTH"),
+		},
+		&cli.IntFlag{
+			Name:    "device-height",
+			Usage:   "Set the Device Height",
+			Value:   900,
+			Sources: cli.EnvVars("OGAMED_DEVICHEIGHT"),
+		},
+		&cli.StringFlag{
+			Name:    "device-timezone",
+			Usage:   "Set the Device Timezone",
+			Value:   "Europe/Berlin",
+			Sources: cli.EnvVars("OGAMED_DEVICETIMEZONE"),
+		},
+		&cli.StringFlag{
+			Name:    "device-lang",
+			Usage:   "Set the Device Language",
+			Value:   "en-US,en",
+			Sources: cli.EnvVars("OGAMED_DEVICELANG"),
+		},
+		&cli.StringFlag{
+			Name:    "device-user-agent",
+			Usage:   "Set the Device User-Agent",
+			Value:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+			Sources: cli.EnvVars("OGAMED_DEVICEUSERAGENT"),
+		},
 	}
 	app.Action = start
 	if err := app.Run(context.Background(), os.Args); err != nil {
@@ -187,17 +247,27 @@ func start(ctx context.Context, c *cli.Command) error {
 	corsEnabled := c.Bool("cors-enabled")
 	njaApiKey := c.String("nja-api-key")
 	deviceName := c.String("device-name")
-	// TODO: put device config in flags & env variables
+	deviceSystem := c.String("device-system")
+	deviceBrowser := c.String("device-browser")
+	deviceMemory := int(c.Int("device-memory"))
+	deviceConcurrency := int(c.Int("device-concurrency"))
+	deviceColor := int(c.Int("device-color"))
+	deviceWidth := int(c.Int("device-width"))
+	deviceHeight := int(c.Int("device-height"))
+	deviceTimezone := c.String("device-timezone")
+	deviceLang := c.String("device-lang")
+	deviceUserAgent := c.String("device-user-agent")
 	deviceInst, err := device.NewBuilder(deviceName).
-		SetOsName(device.Windows).
-		SetBrowserName(device.Chrome).
-		SetMemory(8).
-		SetHardwareConcurrency(16).
-		ScreenColorDepth(24).
-		SetScreenWidth(1900).
-		SetScreenHeight(900).
-		SetTimezone("America/Los_Angeles").
-		SetLanguages("en-US,en").
+		SetOsName(device.Os(deviceSystem)).
+		SetBrowserName(device.Browser(deviceBrowser)).
+		SetMemory(deviceMemory).
+		SetHardwareConcurrency(deviceConcurrency).
+		ScreenColorDepth(deviceColor).
+		SetScreenWidth(deviceWidth).
+		SetScreenHeight(deviceHeight).
+		SetTimezone(deviceTimezone).
+		SetLanguages(deviceLang).
+		SetUserAgent(deviceUserAgent).
 		Build()
 	if err != nil {
 		panic(err)
@@ -295,6 +365,9 @@ func start(ctx context.Context, c *cli.Command) error {
 	e.GET("/bot/espionage-report/:msgid", wrapper.GetEspionageReportHandler)
 	e.GET("/bot/espionage-report/:galaxy/:system/:position", wrapper.GetEspionageReportForHandler)
 	e.GET("/bot/espionage-report", wrapper.GetEspionageReportMessagesHandler)
+	e.GET("/bot/combat-report/fleet/:fleetID", wrapper.GetCombatReportSummaryForFleetHandler)
+	e.GET("/bot/combat-report/:galaxy/:system/:position", wrapper.GetCombatReportSummaryForHandler)
+	e.GET("/bot/expedition-messages", wrapper.GetExpeditionMessagesHandler)
 	e.POST("/bot/delete-report/:messageID", wrapper.DeleteMessageHandler)
 	e.POST("/bot/delete-all-espionage-reports", wrapper.DeleteEspionageMessagesHandler)
 	e.POST("/bot/delete-all-reports/:tabIndex", wrapper.DeleteMessagesFromTabHandler)
@@ -335,6 +408,7 @@ func start(ctx context.Context, c *cli.Command) error {
 	e.POST("/bot/planets/:planetID/build/ships/:ogameID/:nbr", wrapper.BuildShipsHandler)
 	e.POST("/bot/planets/:planetID/teardown/:ogameID", wrapper.TeardownHandler)
 	e.GET("/bot/planets/:planetID/production", wrapper.GetProductionHandler)
+	e.GET("/bot/planets/:planetID/artifacts", wrapper.GetArtifactsHandler)
 	e.GET("/bot/planets/:planetID/constructions", wrapper.ConstructionsBeingBuiltHandler)
 	e.POST("/bot/planets/:planetID/cancel-building", wrapper.CancelBuildingHandler)
 	e.POST("/bot/planets/:planetID/cancel-research", wrapper.CancelResearchHandler)

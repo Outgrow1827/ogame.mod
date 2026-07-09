@@ -2838,6 +2838,35 @@ func (b *OGame) getProduction(celestialID ogame.CelestialID) ([]ogame.Quantifiab
 	return page.ExtractProduction()
 }
 
+// getArtifacts reads the "Artifacts collected: X/Y" counter shown at the top of the Lifeform
+// Research page (component=lfresearch). This isn't part of the resources endpoint - it only
+// appears embedded in this page's HTML (div#slot01.slot), so it's scraped with a dedicated
+// regex rather than going through the JSON parser infra used for most other pages.
+func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, max int64, err error) {
+	pageHTML, err := b.getPageContent(url.Values{
+		"page":      {"ingame"},
+		"component": {"lfresearch"},
+		"cp":        {utils.FI64(celestialID)},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	rgx := regexp.MustCompile(`id="slot01"\s+class="slot">\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
+	m := rgx.FindSubmatch(pageHTML)
+	if len(m) < 3 {
+		return 0, 0, errors.New("unable to find artifacts counter")
+	}
+	collected, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[1])))
+	if err != nil {
+		return 0, 0, err
+	}
+	max, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[2])))
+	if err != nil {
+		return 0, 0, err
+	}
+	return collected, max, nil
+}
+
 func (b *OGame) technologyDetails(celestialID ogame.CelestialID, id ogame.ID) (ogame.TechnologyDetails, error) {
 	pageHTML, err := b.getPageContent(url.Values{
 		"page":       {"ingame"},
