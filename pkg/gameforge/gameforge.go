@@ -710,10 +710,9 @@ type powChallengeResponse struct {
 	Instrumentation string `json:"instrumentation"`
 }
 
-// solvePowChallenge fetches and solves the sha-256 proof-of-work challenge required
-// by gameforge's new spark-web login endpoint before it will accept credentials.
-// NOTE: this does not replicate the browser fingerprint (canvas/DOM) values gameforge
-// also collects as "instrumentation"; only the PoW itself is solved.
+// solvePowChallenge fetches and solves the sha-256 proof-of-work challenge required by
+// gameforge's spark-web login endpoint. Does not replicate the browser fingerprint gameforge
+// also collects.
 func solvePowChallenge(ctx context.Context, client HttpClient, challengeID string) error {
 	req, err := http.NewRequest(http.MethodGet, powCaptchaBaseURL+"/api/challenge/"+challengeID, nil)
 	if err != nil {

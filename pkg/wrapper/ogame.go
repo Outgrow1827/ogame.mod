@@ -2838,10 +2838,7 @@ func (b *OGame) getProduction(celestialID ogame.CelestialID) ([]ogame.Quantifiab
 	return page.ExtractProduction()
 }
 
-// getArtifacts reads the "Artifacts collected: X/Y" counter shown at the top of the Lifeform
-// Research page (component=lfresearch). This isn't part of the resources endpoint - it only
-// appears embedded in this page's HTML (div#slot01.slot), so it's scraped with a dedicated
-// regex rather than going through the JSON parser infra used for most other pages.
+// getArtifacts reads the "Artifacts collected: X/Y" counter from the Lifeform Research page.
 func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, max int64, err error) {
 	pageHTML, err := b.getPageContent(url.Values{
 		"page":      {"ingame"},

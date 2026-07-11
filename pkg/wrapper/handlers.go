@@ -1169,9 +1169,7 @@ func GetAlliancePageContentHandler(c echo.Context) error {
 }
 
 func replaceHostname(bot *OGame, html []byte) []byte {
-	// bot.cache.serverURL is empty when the session isn't (or is no longer) fully
-	// logged in - bytes.Replace with an empty "old" argument matches between every
-	// byte, corrupting the whole page. Bail out untouched instead.
+	// Bail out if not logged in: bytes.Replace with an empty "old" argument would corrupt the page.
 	if bot.cache.serverURL == "" {
 		return html
 	}
@@ -1247,11 +1245,7 @@ func GetFromGameHandler(c echo.Context) error {
 	}
 	pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = removeCookiesBanner(pageHTML)
-	// Ajax pages requested with asJson=1 (e.g. page=ajax&component=empire&asJson=1) return plain JSON,
-	// not HTML - serving them as text/html regardless broke callers (browser userscripts, the in-game
-	// messages popup, etc.) doing response.json() against this proxy. The previously-discarded error is
-	// now logged instead of silently swallowed, so a failed manual-browsing fetch through this proxy
-	// leaves a trace instead of just returning an empty 200.
+	// asJson=1 requests return plain JSON, not HTML - serve them with the right content type.
 	if vals.Get("asJson") == "1" {
 		return c.Blob(http.StatusOK, "application/json", pageHTML)
 	}
