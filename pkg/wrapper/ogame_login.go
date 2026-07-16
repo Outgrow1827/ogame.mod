@@ -31,7 +31,12 @@ import (
 
 func (b *OGame) wrapLogin() error {
 	fn := func() (bool, bool, error) {
-		return b.loginWithBearerToken("", "")
+		// Try a session already sitting in the persistent cookie jar first (e.g. imported from a
+		// real browser login via cmd/importcookies) - loginWithBearerToken already falls back to a
+		// full postSessions login on its own if the existing session is invalid/expired.
+		token := utils.Or(b.bearerToken, b.getBearerTokenFromCookie())
+		phpSessID := utils.Or(b.cache.ogameSession, b.getPhpSessIDFromCookie())
+		return b.loginWithBearerToken(token, phpSessID)
 	}
 	return b.loginWrapper(fn)
 }
