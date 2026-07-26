@@ -91,6 +91,7 @@ type Prioritizable interface {
 	GetFleetsFromEventList() ([]ogame.Fleet, error)
 	GetItems(ogame.CelestialID) ([]ogame.Item, error)
 	GetLfBonuses() (ogame.LfBonuses, error)
+	GetLfBonusesForCelestial(ogame.CelestialID) (ogame.LfBonuses, error)
 	GetMoon(IntoMoon) (Moon, error)
 	GetMoons() ([]Moon, error)
 	GetPageContent(url.Values) ([]byte, error)

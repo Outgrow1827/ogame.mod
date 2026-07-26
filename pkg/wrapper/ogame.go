@@ -9,22 +9,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/alaingilbert/mtx"
-	"github.com/alaingilbert/ogame/pkg/device"
-	"github.com/alaingilbert/ogame/pkg/exponentialBackoff"
-	"github.com/alaingilbert/ogame/pkg/extractor"
-	"github.com/alaingilbert/ogame/pkg/extractor/v12_0_0"
-	v6 "github.com/alaingilbert/ogame/pkg/extractor/v6"
-	"github.com/alaingilbert/ogame/pkg/gameforge"
-	"github.com/alaingilbert/ogame/pkg/httpclient"
-	"github.com/alaingilbert/ogame/pkg/ogame"
-	"github.com/alaingilbert/ogame/pkg/parser"
-	"github.com/alaingilbert/ogame/pkg/taskRunner"
-	"github.com/alaingilbert/ogame/pkg/utils"
-	cookiejar "github.com/orirawlings/persistent-cookiejar"
-	"golang.org/x/net/proxy"
-	"golang.org/x/net/websocket"
 	"io"
 	"log"
 	"math"
@@ -40,6 +24,24 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/alaingilbert/mtx"
+	"github.com/alaingilbert/ogame/pkg/device"
+	"github.com/alaingilbert/ogame/pkg/exponentialBackoff"
+	"github.com/alaingilbert/ogame/pkg/extractor"
+	"github.com/alaingilbert/ogame/pkg/extractor/v12_0_0"
+	v6 "github.com/alaingilbert/ogame/pkg/extractor/v6"
+	"github.com/alaingilbert/ogame/pkg/gameforge"
+	"github.com/alaingilbert/ogame/pkg/httpclient"
+	"github.com/alaingilbert/ogame/pkg/ogame"
+	"github.com/alaingilbert/ogame/pkg/parser"
+	"github.com/alaingilbert/ogame/pkg/taskRunner"
+	"github.com/alaingilbert/ogame/pkg/utils"
+	"github.com/hashicorp/go-version"
+	cookiejar "github.com/orirawlings/persistent-cookiejar"
+	"golang.org/x/net/proxy"
+	"golang.org/x/net/websocket"
 )
 
 // OGame is a client for ogame.org. It is safe for concurrent use by
@@ -2601,6 +2603,11 @@ func (b *OGame) galaxyInfos(galaxy, system int64, opts ...Option) (ogame.SystemI
 		"system": {utils.FI64(system)},
 	}
 	vals := url.Values{"page": {"ingame"}, "component": {"galaxy"}, "action": {"fetchGalaxyContent"}, "ajax": {"1"}, "asJson": {"1"}}
+	if ogVersion, verr := version.NewVersion(sanitizeServerVersion(b.cache.serverData.Version)); verr == nil {
+		if isVGreaterThanOrEqual(ogVersion, "13.0.0") {
+			vals = url.Values{"page": {"ingame"}, "component": {"galaxy"}, "action": {"fetchSolarSystemData"}, "asJson": {"1"}}
+		}
+	}
 	pageHTML, err := b.postPageContent(vals, payload, opts...)
 	if err != nil {
 		return res, err
@@ -2713,6 +2720,44 @@ func (b *OGame) getLfBonuses() (out ogame.LfBonuses, err error) {
 	return bonuses, nil
 }
 
+
+func (b *OGame) getLfBonusesForCelestial(celestialID ogame.CelestialID) (out ogame.LfBonuses, err error) {
+	page, err := getPage[parser.LfBonusesPage](b, ChangePlanet(celestialID))
+	if err != nil {
+		return
+	}
+	bonuses, err := page.ExtractLfBonuses()
+	if err != nil {
+		return
+	}
+	b.cache.lfBonuses = &bonuses
+	return bonuses, nil
+}
+
+func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, max int64, err error) {
+	pageHTML, err := b.getPageContent(url.Values{
+		"page":      {"ingame"},
+		"component": {"lfresearch"},
+		"cp":        {utils.FI64(celestialID)},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	rgx := regexp.MustCompile(`id="slot01"\s+class="slot">\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
+	m := rgx.FindSubmatch(pageHTML)
+	if len(m) < 3 {
+		return 0, 0, errors.New("unable to find artifacts counter")
+	}
+	collected, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[1])))
+	if err != nil {
+		return 0, 0, err
+	}
+	max, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[2])))
+	if err != nil {
+		return 0, 0, err
+	}
+	return collected, max, nil
+}
 func (b *OGame) getCachedAllianceClass() (out ogame.AllianceClass, err error) {
 	allianceClass := b.cache.allianceClass
 	if allianceClass == nil {
@@ -2836,32 +2881,6 @@ func (b *OGame) getProduction(celestialID ogame.CelestialID) ([]ogame.Quantifiab
 		return []ogame.Quantifiable{}, 0, err
 	}
 	return page.ExtractProduction()
-}
-
-// getArtifacts reads the "Artifacts collected: X/Y" counter from the Lifeform Research page.
-func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, max int64, err error) {
-	pageHTML, err := b.getPageContent(url.Values{
-		"page":      {"ingame"},
-		"component": {"lfresearch"},
-		"cp":        {utils.FI64(celestialID)},
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	rgx := regexp.MustCompile(`id="slot01"\s+class="slot">\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
-	m := rgx.FindSubmatch(pageHTML)
-	if len(m) < 3 {
-		return 0, 0, errors.New("unable to find artifacts counter")
-	}
-	collected, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[1])))
-	if err != nil {
-		return 0, 0, err
-	}
-	max, err = utils.ParseI64(strings.NewReplacer(".", "", ",", "").Replace(string(m[2])))
-	if err != nil {
-		return 0, 0, err
-	}
-	return collected, max, nil
 }
 
 func (b *OGame) technologyDetails(celestialID ogame.CelestialID, id ogame.ID) (ogame.TechnologyDetails, error) {
@@ -3113,6 +3132,15 @@ func (b *OGame) cancelResearch(celestialID ogame.CelestialID) error {
 }
 
 func (b *OGame) fetchResources(celestialID ogame.CelestialID) (ogame.ResourcesDetails, error) {
+	if ogVersion, err := version.NewVersion(sanitizeServerVersion(b.cache.serverData.Version)); err == nil {
+		if isVGreaterThanOrEqual(ogVersion, "13.0.0") {
+			pageJSON, err := b.postPageContent(url.Values{"page": {"componentOnly"}, "component": {FetchResourcesbarAjaxPageName}, "action": {"fetchResources"}, "asJson": {"1"}}, nil, ChangePlanet(celestialID))
+			if err != nil {
+				return ogame.ResourcesDetails{}, err
+			}
+			return b.extractor.ExtractResourcesDetails(pageJSON)
+		}
+	}
 	pageJSON, err := b.getPage(FetchResourcesPageName, ChangePlanet(celestialID))
 	if err != nil {
 		return ogame.ResourcesDetails{}, err
@@ -3299,6 +3327,7 @@ type CheckTargetResponse struct {
 	EmptySystems    int64        `json:"emptySystems"`
 	InactiveSystems int64        `json:"inactiveSystems"`
 	NewAjaxToken    string       `json:"newAjaxToken"`
+	Message         string       `json:"message"`
 }
 
 func (b *OGame) checkTarget(ships ogame.ShipsInfos, where ogame.Coordinate, opts ...Option) (out CheckTargetResponse, err error) {
@@ -3312,7 +3341,7 @@ func (b *OGame) checkTarget(ships ogame.ShipsInfos, where ogame.Coordinate, opts
 	payload.Set("position", utils.FI64(where.Position))
 	payload.Set("type", utils.FI64(where.Type))
 	payload.Set("union", "0")
-	by, err := b.postPageContent(url.Values{"page": {"ingame"}, "component": {"fleetdispatch"}, "action": {"checkTarget"}, "ajax": {"1"}, "asJson": {"1"}}, payload, opts...)
+	by, err := b.postPageContent(url.Values{"page": {"ingame"}, "component": {"fleetdispatch"}, "action": {"checkTarget"}, "asJson": {"1"}}, payload, opts...)
 	if err != nil {
 		return out, err
 	}
@@ -3442,7 +3471,7 @@ func (b *OGame) sendFleet(celestialID ogame.CelestialID, ships ogame.ShipsInfos,
 		return zeroFleet, err
 	}
 
-	if !checkRes.TargetOk {
+	if !checkRes.TargetOk && checkRes.Message != "ok" {
 		if len(checkRes.Errors) > 0 {
 			return zeroFleet, errors.New(checkRes.Errors[0].Message + " (" + strconv.Itoa(checkRes.Errors[0].Error) + ")")
 		}
@@ -3936,13 +3965,12 @@ func (b *OGame) deleteAllMessagesFromTab(tabID ogame.MessagesTabID) error {
 		return err
 	}
 	payload := url.Values{
-		"tabid":     {utils.FI64(tabID)},
-		"messageId": {utils.FI64(-1)},
-		"action":    {"103"},
-		"ajax":      {"1"},
-		"token":     {token},
+		"activeSubTab": {utils.FI64(tabID)},
+		"messageId":    {utils.FI64(-1)},
+		"showTrash":    {"false"},
+		"token":        {token},
 	}
-	pageHTML, err := b.postPageContent(url.Values{"page": {"messages"}}, payload)
+	pageHTML, err := b.postPageContent(url.Values{"page": {"componentOnly"}, "component": {"messages"}, "action": {"flagDeleteAll"}}, payload)
 	var res struct {
 		Status       string `json:"status"`
 		Message      string `json:"message"`

@@ -244,6 +244,42 @@ func (f FilePersistor) Save(fprt *JsFingerprint) error {
 	return nil
 }
 
+// matchesConfiguredParams reports whether a previously persisted fingerprint
+// still matches the device params currently configured on the builder. If
+// any explicitly-set param differs, the fingerprint is considered stale.
+func (d *Builder) matchesConfiguredParams(fprt *JsFingerprint) bool {
+	if d.osName != "" && string(d.osName) != fprt.OsName {
+		return false
+	}
+	if d.browserName != "" && string(d.browserName) != fprt.BrowserName {
+		return false
+	}
+	if d.timezone != "" && d.timezone != fprt.Timezone {
+		return false
+	}
+	if d.languages != "" && d.languages != fprt.Languages {
+		return false
+	}
+	if d.memory != 0 && d.memory != fprt.DeviceMemory {
+		return false
+	}
+	if d.hardwareConcurrency != 0 && d.hardwareConcurrency != fprt.HardwareConcurrency {
+		return false
+	}
+	if d.screenColorDepth != 0 && d.screenColorDepth != fprt.ScreenColorDepth {
+		return false
+	}
+	if d.screenWidth != 0 && d.screenWidth != fprt.ScreenWidth {
+		return false
+	}
+	if d.screenHeight != 0 && d.screenHeight != fprt.ScreenHeight {
+		return false
+	}
+	if d.userAgent != "" && d.userAgent != fprt.UserAgent {
+		return false
+	}
+	return true
+}
 func (d *Builder) newFingerprint() (*JsFingerprint, error) {
 	if d.timezone == "" {
 		return nil, errors.New("timezone must be specified")
@@ -330,7 +366,7 @@ func (d *Builder) newFingerprint() (*JsFingerprint, error) {
 	}
 
 	fprt := &JsFingerprint{
-		ConstantVersion:       11,
+		ConstantVersion:       12,
 		UserAgent:             d.userAgent,
 		BrowserName:           string(d.browserName),
 		BrowserEngineName:     d.browserEngineName,
@@ -363,6 +399,7 @@ func (d *Builder) newFingerprint() (*JsFingerprint, error) {
 		WebglRenderHash:       randFakeHash(),
 		//Game1DateHeader:       game1DateHeader,
 		//CalcDeltaMs:           elapsed,
+		LastValue: 0,
 	}
 	return fprt, nil
 }
@@ -379,7 +416,13 @@ func (d *Builder) Build() (*Device, error) {
 	}
 
 	fprt, err := d.persistor.Load()
-	if err != nil {
+	if err == nil && fprt != nil && !d.matchesConfiguredParams(fprt) {
+		// Persisted fingerprint no longer matches the currently configured device
+		// params (instance_settings.json DeviceConf changed) - force a rebuild
+		// instead of silently keeping stale values forever.
+		fprt = nil
+	}
+	if fprt == nil {
 		fprt, err = d.newFingerprint()
 		if err != nil {
 			return nil, err
@@ -451,6 +494,7 @@ type JsFingerprint struct {
 	MediaDevicesHash      string
 	PermissionsStatesHash string
 	WebglRenderHash       string
+	LastValue             int
 }
 
 const javascriptISOString = "2006-01-02T15:04:05.999Z07:00"
@@ -532,6 +576,7 @@ func (f *JsFingerprint) MarshalJSON() ([]byte, error) {
 	toEnc = append(toEnc, f.UserAgent)             // objToEncrypt['dehNvwBnzDqu'] = navigator.userAgent;
 	toEnc = append(toEnc, f.Game1DateHeader)       // objToEncrypt['c9hKwCWX61TBJm_dKn0'] = new Date(httpReq.getResponseHeader('date')).toISOString();
 	toEnc = append(toEnc, nil)                     // objToEncrypt['ctdIvSKVCQ'] = arg2;
+	toEnc = append(toEnc, f.LastValue)             // ????;
 	return json.Marshal(toEnc)
 }
 
@@ -1107,6 +1152,8 @@ func ParseBlackbox(decrypted string) (*JsFingerprint, error) {
 		return ParseBlackboxV9(decrypted)
 	} else if constantVersion == 11 {
 		return ParseBlackboxV11(decrypted)
+	} else if constantVersion == 12 {
+		return ParseBlackboxV12(decrypted)
 	}
 	return nil, errors.New("unknown blackbox version")
 }
@@ -1545,5 +1592,135 @@ func ParseBlackboxV11(decrypted string) (*JsFingerprint, error) {
 	if !ok {
 		return nil, errors.New("failed to parse Game1DateHeader")
 	}
+	return fingerprint, nil
+}
+
+func ParseBlackboxV12(decrypted string) (*JsFingerprint, error) {
+	fingerprint := &JsFingerprint{}
+	dec := json.NewDecoder(strings.NewReader(decrypted))
+	var arr []any
+	if err := dec.Decode(&arr); err != nil {
+		return nil, err
+	}
+	constantVersion, ok := arr[0].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse ConstantVersion")
+	}
+	fingerprint.Timezone, ok = arr[1].(string)
+	if !ok {
+		return nil, errors.New("failed to parse Timezone")
+	}
+	fingerprint.OsName, ok = arr[2].(string)
+	if !ok {
+		return nil, errors.New("failed to parse OsName")
+	}
+	fingerprint.BrowserName, ok = arr[3].(string)
+	if !ok {
+		return nil, errors.New("failed to parse BrowserName")
+	}
+	fingerprint.NavigatorVendor, ok = arr[4].(string)
+	if !ok {
+		return nil, errors.New("failed to parse NavigatorVendor")
+	}
+	deviceMemory, ok := arr[5].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse DeviceMemory")
+	}
+	hardwareConcurrency, ok := arr[6].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse DeviceMemory")
+	}
+	fingerprint.HardwareConcurrency = int(hardwareConcurrency)
+	fingerprint.Languages, ok = arr[7].(string)
+	if !ok {
+		return nil, errors.New("failed to parse Languages")
+	}
+	fingerprint.PluginsHash, ok = arr[8].(string)
+	if !ok {
+		return nil, errors.New("failed to parse PluginsHash")
+	}
+	fingerprint.WebglInfo, ok = arr[9].(string)
+	if !ok {
+		return nil, errors.New("failed to parse WebglInfo")
+	}
+	fingerprint.FontsHash, ok = arr[10].(string)
+	if !ok {
+		return nil, errors.New("failed to parse FontsHash")
+	}
+	fingerprint.AudioCtxHash, ok = arr[11].(string)
+	if !ok {
+		return nil, errors.New("failed to parse AudioCtxHash")
+	}
+	screenWidth, ok := arr[12].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse ScreenWidth")
+	}
+	fingerprint.ScreenWidth = int(screenWidth)
+	screenHeight, ok := arr[13].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse ScreenHeight")
+	}
+	fingerprint.ScreenHeight = int(screenHeight)
+	fingerprint.VideoHash, ok = arr[14].(string)
+	if !ok {
+		return nil, errors.New("failed to parse VideoHash")
+	}
+	fingerprint.AudioHash, ok = arr[15].(string)
+	if !ok {
+		return nil, errors.New("failed to parse AudioHash")
+	}
+	fingerprint.MediaDevicesHash, ok = arr[16].(string)
+	if !ok {
+		return nil, errors.New("failed to parse MediaDevicesHash")
+	}
+	fingerprint.PermissionsStatesHash, ok = arr[17].(string)
+	if !ok {
+		return nil, errors.New("failed to parse PermissionsStatesHash")
+	}
+	fingerprint.OfflineAudioCtx, ok = arr[18].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse OfflineAudioCtx")
+	}
+	fingerprint.WebglRenderHash, ok = arr[19].(string)
+	if !ok {
+		return nil, errors.New("failed to parse WebglRenderHash")
+	}
+	canvas2DInfo, ok := arr[20].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse Canvas2DInfo")
+	}
+	fingerprint.Canvas2DInfo = int(canvas2DInfo)
+	fingerprint.DateIso, ok = arr[21].(string)
+	if !ok {
+		return nil, errors.New("failed to parse DateIso")
+	}
+	fingerprint.XGame, ok = arr[22].(string)
+	if !ok {
+		return nil, errors.New("failed to parse XGame")
+	}
+	calcDeltaMs, ok := arr[23].(float64)
+	if !ok {
+		return nil, errors.New("failed to parse CalcDeltaMs")
+	}
+	fingerprint.CalcDeltaMs = int64(calcDeltaMs)
+	fingerprint.Version, ok = arr[24].(string)
+	if !ok {
+		return nil, errors.New("failed to parse Version")
+	}
+	fingerprint.DeviceMemory = int(deviceMemory)
+	fingerprint.XVecB64, ok = arr[25].(string)
+	if !ok {
+		return nil, errors.New("failed to parse XVecB64")
+	}
+	fingerprint.ConstantVersion = int(constantVersion)
+	fingerprint.UserAgent, ok = arr[26].(string)
+	if !ok {
+		return nil, errors.New("failed to parse UserAgent")
+	}
+	fingerprint.Game1DateHeader, ok = arr[27].(string)
+	if !ok {
+		return nil, errors.New("failed to parse Game1DateHeader")
+	}
+	fingerprint.LastValue = 0
 	return fingerprint, nil
 }

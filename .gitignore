@@ -1,4 +1,5 @@
 .envrc
+.env
 .idea
 dist
 cmd/scripts/bindata
@@ -8,7 +9,16 @@ cover.out
 vendor
 /ogame.code-workspace
 cmd/ogamed/bin
+cmd/ogamed/ogamed.exe
+/ogamed.exe
 /.vs
 *.png
 /_private
+
+# Browser captures / console exports used for debugging - contain real session
+# tokens, player names/IDs and universe data, never to be pushed
+/_processados
+*.har
+console-export-*.log
+erros.txt
 /bin

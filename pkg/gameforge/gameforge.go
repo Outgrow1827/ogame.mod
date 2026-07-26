@@ -3,18 +3,16 @@ package gameforge
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/pquerna/otp/totp"
 	"io"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pquerna/otp/totp"
 )
 
 // TokenCookieName gameforge cookie name for token id
@@ -30,8 +28,6 @@ const (
 	gzipEncoding            = "gzip, deflate, br"
 	challengeBaseURL        = "https://challenge.gameforge.com"
 	imgDropChallengeBaseURL = "https://image-drop-challenge.gameforge.com"
-	sparkWebBaseURL         = "https://spark-web.gameforge.com"
-	powCaptchaBaseURL       = "https://pow-captcha.gameforge.com"
 	endpointLoc             = "en-GB"
 )
 
@@ -621,59 +617,41 @@ func login(params *loginParams) (out *LoginResponse, err error) {
 	}
 	client := params.Device
 	ctx := params.Ctx
-	gameEnvironmentID, gameID, err := getConfiguration(ctx, client, params.platform, params.lobby)
+	gameEnvironmentID, platformGameID, err := getConfiguration(ctx, client, params.platform, params.lobby)
 	if err != nil {
 		return out, err
 	}
 
-	challengeID := params.ChallengeID
-	var by []byte
-	var statusCode int
-	for attempt := 0; attempt < 2; attempt++ {
-		req, err := postSessionsReq(params, gameEnvironmentID, gameID, challengeID)
-		if err != nil {
-			return out, err
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return out, err
-		}
-		by, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return out, err
-		}
-		statusCode = resp.StatusCode
-
-		if statusCode == http.StatusConflict {
-			var conflictResp struct {
-				ErrorTypes  []string `json:"errorTypes"`
-				ChallengeID string   `json:"challengeId"`
-			}
-			if err := json.Unmarshal(by, &conflictResp); err == nil && conflictResp.ChallengeID != "" && containsString(conflictResp.ErrorTypes, "CHALLENGE_REQUIRED") {
-				if err := solvePowChallenge(ctx, client, conflictResp.ChallengeID); err != nil {
-					return out, fmt.Errorf("failed to solve pow challenge: %w", err)
-				}
-				challengeID = conflictResp.ChallengeID
-				continue
-			}
-			if legacyChallengeID := extractChallengeID(resp); legacyChallengeID != "" {
-				return out, NewCaptchaRequiredError(legacyChallengeID)
-			}
-			return out, errors.New("gameforge conflict : " + string(by))
-		}
-		break
+	req, err := postSessionsReq(params, gameEnvironmentID, platformGameID)
+	if err != nil {
+		return out, err
 	}
 
-	if statusCode == http.StatusForbidden {
+	resp, err := client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	by, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return out, err
+	}
+
+	if resp.StatusCode == http.StatusConflict {
+		if challengeID := extractChallengeID(resp); challengeID != "" {
+			return out, NewCaptchaRequiredError(challengeID)
+		}
+	}
+
+	if resp.StatusCode == http.StatusForbidden {
 		if string(by) == `{"error":{"message":"Forbidden"}}` {
 			return out, ErrForbidden
 		}
-		return out, errors.New(strconv.Itoa(statusCode) + " : " + string(by))
-	} else if statusCode >= http.StatusInternalServerError {
-		return out, errors.New("gameforge server error code : " + strconv.Itoa(statusCode))
-	} else if statusCode != http.StatusCreated {
+		return out, errors.New(resp.Status + " : " + string(by))
+	} else if resp.StatusCode >= http.StatusInternalServerError {
+		return out, errors.New("gameforge server error code : " + resp.Status)
+	} else if resp.StatusCode != http.StatusCreated {
 		if string(by) == `{"reason":"OTP_REQUIRED"}` {
 			return out, ErrOTPRequired
 		}
@@ -687,134 +665,6 @@ func login(params *loginParams) (out *LoginResponse, err error) {
 		return out, err
 	}
 	return out, nil
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
-}
-
-// powChallengeResponse is returned by GET pow-captcha.gameforge.com/api/challenge/{id}
-type powChallengeResponse struct {
-	Pow struct {
-		Algorithm  string `json:"algorithm"`
-		Challenges []struct {
-			Salt   string `json:"salt"`
-			Target string `json:"target"`
-		} `json:"challenges"`
-	} `json:"pow"`
-	Instrumentation string `json:"instrumentation"`
-}
-
-// solvePowChallenge fetches and solves the sha-256 proof-of-work challenge required by
-// gameforge's spark-web login endpoint. Does not replicate the browser fingerprint gameforge
-// also collects.
-func solvePowChallenge(ctx context.Context, client HttpClient, challengeID string) error {
-	req, err := http.NewRequest(http.MethodGet, powCaptchaBaseURL+"/api/challenge/"+challengeID, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set(acceptEncodingHeaderKey, gzipEncoding)
-	req = req.WithContext(ctx)
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	by, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return err
-	}
-
-	var cr powChallengeResponse
-	if err := json.Unmarshal(by, &cr); err != nil {
-		return errors.New("failed to parse pow challenge : " + err.Error() + " : " + string(by))
-	}
-
-	var snippets []struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-	}
-	_ = json.Unmarshal([]byte(cr.Instrumentation), &snippets)
-
-	type powSolution struct {
-		Salt  string `json:"salt"`
-		Nonce string `json:"nonce"`
-	}
-	solutions := make([]powSolution, len(cr.Pow.Challenges))
-	challengeMs := make([]int64, len(cr.Pow.Challenges))
-	var totalMs int64
-	for i, c := range cr.Pow.Challenges {
-		start := time.Now()
-		nonce := solveSha256Pow(c.Salt, c.Target)
-		elapsed := time.Since(start).Milliseconds()
-		challengeMs[i] = elapsed
-		totalMs += elapsed
-		solutions[i] = powSolution{Salt: c.Salt, Nonce: nonce}
-	}
-
-	var payload struct {
-		Pow             []powSolution `json:"pow"`
-		Instrumentation []int64       `json:"instrumentation"`
-		Metrics         struct {
-			Solver struct {
-				Path        string  `json:"path"`
-				TotalMs     int64   `json:"totalMs"`
-				ChallengeMs []int64 `json:"challengeMs"`
-			} `json:"solver"`
-		} `json:"metrics"`
-	}
-	payload.Pow = solutions
-	payload.Instrumentation = make([]int64, len(snippets))
-	payload.Metrics.Solver.Path = "wasm"
-	payload.Metrics.Solver.TotalMs = totalMs
-	payload.Metrics.Solver.ChallengeMs = challengeMs
-
-	payloadBytes, err := json.Marshal(&payload)
-	if err != nil {
-		return err
-	}
-	req2, err := http.NewRequest(http.MethodPost, powCaptchaBaseURL+"/api/challenge/"+challengeID, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return err
-	}
-	req2.Header.Set(contentTypeHeaderKey, applicationJson)
-	req2.Header.Set(acceptEncodingHeaderKey, gzipEncoding)
-	req2 = req2.WithContext(ctx)
-	resp2, err := client.Do(req2)
-	if err != nil {
-		return err
-	}
-	defer resp2.Body.Close()
-	by2, err := io.ReadAll(resp2.Body)
-	if err != nil {
-		return err
-	}
-	var solveResp struct {
-		Status string `json:"status"`
-	}
-	if err := json.Unmarshal(by2, &solveResp); err != nil {
-		return errors.New("failed to parse pow solve response : " + err.Error() + " : " + string(by2))
-	}
-	if solveResp.Status != "solved" {
-		return errors.New("pow challenge not solved : " + string(by2))
-	}
-	return nil
-}
-
-// solveSha256Pow finds a nonce such that hex(sha256(salt+nonce)) starts with target
-func solveSha256Pow(salt, target string) string {
-	for nonce := 0; ; nonce++ {
-		nonceStr := strconv.Itoa(nonce)
-		sum := sha256.Sum256([]byte(salt + nonceStr))
-		if strings.HasPrefix(hex.EncodeToString(sum[:]), target) {
-			return nonceStr
-		}
-	}
 }
 
 // Logout ...
@@ -874,12 +724,13 @@ func getConfiguration(ctx context.Context, client HttpClient, platform Platform,
 	return string(gameEnvironmentID), string(platformGameID), nil
 }
 
-func postSessionsReq(params *loginParams, gameEnvironmentID, gameID string, challengeID string) (*http.Request, error) {
+func postSessionsReq(params *loginParams, gameEnvironmentID, platformGameID string) (*http.Request, error) {
 	dev := params.Device
 	ctx := params.Ctx
 	username := params.Username
 	password := params.Password
 	otpSecret := params.OtpSecret
+	challengeID := params.ChallengeID
 
 	blackbox, err := dev.GetBlackbox()
 	if err != nil {
@@ -887,27 +738,30 @@ func postSessionsReq(params *loginParams, gameEnvironmentID, gameID string, chal
 	}
 
 	var payload = struct {
-		Identity          string `json:"identity"`
-		Password          string `json:"password"`
-		Locale            string `json:"locale"`
-		GfLang            string `json:"gfLang"`
-		GameID            string `json:"gameId"`
-		GameEnvironmentID string `json:"gameEnvironmentId"`
 		Blackbox          string `json:"blackbox"`
+		GameEnvironmentID string `json:"gameEnvironmentId"`
+		PlatformGameID    string `json:"gameId"`
+		GfLang            string `json:"gfLang"`
+		Email             string `json:"identity"`
+		Locale            string `json:"locale"`
+		Password          string `json:"password"`
+		//AutoGameAccountCreation bool   `json:"autoGameAccountCreation"`
 	}{
-		Identity:          username,
+		Email:             username,
 		Password:          password,
 		Locale:            "en-GB",
 		GfLang:            "en",
-		GameID:            gameID,
-		GameEnvironmentID: gameEnvironmentID,
+		PlatformGameID:    platformGameID,
 		Blackbox:          blackboxPrefix + blackbox,
+		GameEnvironmentID: gameEnvironmentID,
+		//AutoGameAccountCreation: false,
 	}
 	by, err := json.Marshal(&payload)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, sparkWebBaseURL+"/api/v2/authProviders/mauth/sessions", bytes.NewReader(by))
+
+	req, err := http.NewRequest(http.MethodPost, "https://spark-web.gameforge.com/api/v2/authProviders/mauth/sessions", bytes.NewReader(by))
 	if err != nil {
 		return nil, err
 	}
@@ -1173,7 +1027,7 @@ func GetLoginLink(ctx context.Context, device Device, platform Platform, lobby, 
 	var payload = struct {
 		Blackbox      string `json:"blackbox"`
 		Id            int64  `json:"id"`
-		ClickedButton string `json:"clickedButton"`
+		ClickedButton string `json:"account_list"`
 		Server        struct {
 			Language string `json:"language"`
 			Number   int64  `json:"number"`

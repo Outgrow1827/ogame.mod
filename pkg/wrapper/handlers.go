@@ -251,60 +251,6 @@ func GetEspionageReportHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(espionageReport))
 }
 
-// GetCombatReportSummaryForFleetHandler ...
-func GetCombatReportSummaryForFleetHandler(c echo.Context) error {
-	bot := c.Get("bot").(*OGame)
-	fleetID, err := utils.ParseI64(c.Param("fleetID"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid fleetID"))
-	}
-	combatReport, err := bot.GetCombatReportSummaryForFleet(ogame.FleetID(fleetID))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
-	}
-	return c.JSON(http.StatusOK, SuccessResp(combatReport))
-}
-
-// GetCombatReportSummaryForHandler ...
-func GetCombatReportSummaryForHandler(c echo.Context) error {
-	bot := c.Get("bot").(*OGame)
-	galaxy, err := utils.ParseI64(c.Param("galaxy"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid galaxy"))
-	}
-	system, err := utils.ParseI64(c.Param("system"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid system"))
-	}
-	position, err := utils.ParseI64(c.Param("position"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid position"))
-	}
-	combatReport, err := bot.GetCombatReportSummaryFor(ogame.Coordinate{Type: ogame.PlanetType, Galaxy: galaxy, System: system, Position: position})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
-	}
-	return c.JSON(http.StatusOK, SuccessResp(combatReport))
-}
-
-// GetExpeditionMessagesHandler ...
-func GetExpeditionMessagesHandler(c echo.Context) error {
-	bot := c.Get("bot").(*OGame)
-	maxPage := int64(1)
-	if v := c.QueryParam("maxPage"); v != "" {
-		parsed, err := utils.ParseI64(v)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid maxPage"))
-		}
-		maxPage = parsed
-	}
-	messages, err := bot.GetExpeditionMessages(maxPage)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
-	}
-	return c.JSON(http.StatusOK, SuccessResp(messages))
-}
-
 // GetEspionageReportForHandler ...
 func GetEspionageReportForHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
@@ -636,6 +582,90 @@ func SetResourceSettingsHandler(c echo.Context) error {
 }
 
 // GetLfBuildingsHandler ...
+func GetAllianceClassHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	allianceClass, err := bot.GetCachedAllianceClass()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(allianceClass))
+}
+
+func GetLfBonusesNoParamHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	lfBonuses, err := bot.GetLfBonuses()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(lfBonuses))
+}
+
+func GetAvailableDiscoveriesHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+	var opts Option
+	if planetID != 0 {
+		opts = ChangePlanet(ogame.CelestialID(planetID))
+	}
+	count, err := bot.GetAvailableDiscoveries(opts)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(count))
+}
+
+func GetPositionsAvailableForDiscoveryFleetHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+	var opts Option
+	if planetID != 0 {
+		opts = ChangePlanet(ogame.CelestialID(planetID))
+	}
+	if err := c.Request().ParseForm(); err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid form"))
+	}
+	where := ogame.Coordinate{Type: ogame.PlanetType}
+	for key, values := range c.Request().PostForm {
+		switch key {
+		case "galaxy":
+			galaxy, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid galaxy"))
+			}
+			where.Galaxy = galaxy
+		case "system":
+			system, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid system"))
+			}
+			where.System = system
+		}
+	}
+	coords, err := bot.GetPositionsAvailableForDiscoveryFleet(where.Galaxy, where.System, opts)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(coords))
+}
+func GetLfBonusesHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+	res, err := bot.GetLfBonusesForCelestial(ogame.CelestialID(planetID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(res))
+}
+
 func GetLfBuildingsHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
 	planetID, err := utils.ParseI64(c.Param("planetID"))
@@ -868,7 +898,6 @@ func GetProductionHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(res))
 }
 
-// GetArtifactsHandler ...
 func GetArtifactsHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
 	planetID, err := utils.ParseI64(c.Param("planetID"))
@@ -1115,6 +1144,148 @@ func SendFleetHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(fleet))
 }
 
+// CheckFleetHandler ...
+// curl 127.0.0.1:1234/bot/planets/123/check-fleet -d 'ships=203,1&ships=204,10&speed=10&galaxy=1&system=1&type=1&position=1&mission=3&metal=1&crystal=2&deuterium=3'
+func CheckFleetHandler(c echo.Context) error {
+	// Content-Type: application/x-www-form-urlencoded
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+
+	if err := c.Request().ParseForm(); err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid form"))
+	}
+
+	var ships ogame.ShipsInfos
+	where := ogame.Coordinate{Type: ogame.PlanetType}
+	mission := ogame.Transport
+	var duration int64
+	var unionID int64
+	payload := ogame.Resources{}
+	speed := ogame.HundredPercent
+	for key, values := range c.Request().PostForm {
+		switch key {
+		case "ships":
+			for _, s := range values {
+				a := strings.Split(s, ",")
+				shipID, err := utils.ParseI64(a[0])
+				if err != nil || !ogame.ID(shipID).IsShip() {
+					return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid ship id "+a[0]))
+				}
+				nbr, err := utils.ParseI64(a[1])
+				if err != nil || nbr < 0 {
+					return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid nbr "+a[1]))
+				}
+				ships.Set(ogame.ID(shipID), nbr)
+			}
+		case "speed":
+			speedInt, err := utils.ParseI64(values[0])
+			if err != nil || speedInt < 0 || speedInt > 10 {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid speed"))
+			}
+			speed = ogame.Speed(speedInt)
+		case "galaxy":
+			galaxy, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid galaxy"))
+			}
+			where.Galaxy = galaxy
+		case "system":
+			system, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid system"))
+			}
+			where.System = system
+		case "position":
+			position, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid position"))
+			}
+			where.Position = position
+		case "type":
+			t, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid type"))
+			}
+			where.Type = ogame.CelestialType(t)
+		case "mission":
+			missionInt, err := utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid mission"))
+			}
+			mission = ogame.MissionID(missionInt)
+		case "duration":
+			duration, err = utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid duration"))
+			}
+		case "union":
+			unionID, err = utils.ParseI64(values[0])
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid union id"))
+			}
+		case "metal":
+			metal, err := utils.ParseI64(values[0])
+			if err != nil || metal < 0 {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid metal"))
+			}
+			payload.Metal = metal
+		case "crystal":
+			crystal, err := utils.ParseI64(values[0])
+			if err != nil || crystal < 0 {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid crystal"))
+			}
+			payload.Crystal = crystal
+		case "deuterium":
+			deuterium, err := utils.ParseI64(values[0])
+			if err != nil || deuterium < 0 {
+				return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid deuterium"))
+			}
+			payload.Deuterium = deuterium
+		}
+	}
+
+	fb := NewFleetBuilder(bot)
+	fb.SetOrigin(ogame.CelestialID(planetID))
+	fb.SetShips(ships)
+	fb.SetSpeed(speed)
+	fb.SetDestination(where)
+	fb.SetMission(mission)
+	fb.SetResources(payload)
+	fb.SetDuration(duration)
+	fb.SetUnionID(unionID)
+	sec, fuel := fb.FlightTime()
+	cargo := fb.Cargo()
+	origin, _ := bot.GetCachedCelestial(ogame.CelestialID(planetID))
+
+	result := struct {
+		Origin      ogame.Coordinate `json:"origin"`
+		Destination ogame.Coordinate `json:"destination"`
+		FlightTime  int64            `json:"flightTime"`
+		Fuel        int64            `json:"fuel"`
+		Resources   ogame.Resources  `json:"resources"`
+		Cargo       int64            `json:"cargo"`
+		CargoUsed   int64            `json:"cargoUsed"`
+		Ships       ogame.ShipsInfos `json:"ships"`
+		Mission     ogame.MissionID  `json:"mission"`
+		Speed       ogame.Speed      `json:"speed"`
+	}{
+		Origin:      origin.GetCoordinate(),
+		Destination: fb.destination,
+		FlightTime:  sec,
+		Fuel:        fuel,
+		Resources:   payload,
+		Cargo:       cargo,
+		CargoUsed:   payload.Total(),
+		Ships:       ships,
+		Mission:     mission,
+		Speed:       speed,
+	}
+	return c.JSON(http.StatusOK, SuccessResp(result))
+}
+
 // SendDiscoveryHandler ...
 // curl 127.0.0.1:1234/bot/planets/123/send-discovery -d 'galaxy=1&system=1&type=1&position=1'
 func SendDiscoveryHandler(c echo.Context) error {
@@ -1169,10 +1340,6 @@ func GetAlliancePageContentHandler(c echo.Context) error {
 }
 
 func replaceHostname(bot *OGame, html []byte) []byte {
-	// Bail out if not logged in: bytes.Replace with an empty "old" argument would corrupt the page.
-	if bot.cache.serverURL == "" {
-		return html
-	}
 	serverURLBytes := []byte(bot.cache.serverURL)
 	apiNewHostnameBytes := []byte(bot.apiNewHostname)
 	escapedServerURL := bytes.Replace(serverURLBytes, []byte("/"), []byte(`\/`), -1)
@@ -1239,16 +1406,9 @@ func GetFromGameHandler(c echo.Context) error {
 	if len(c.QueryParams()) > 0 {
 		vals = c.QueryParams()
 	}
-	pageHTML, err := bot.GetPageContent(vals)
-	if err != nil {
-		c.Logger().Error(err)
-	}
+	pageHTML, _ := bot.GetPageContent(vals)
 	pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = removeCookiesBanner(pageHTML)
-	// asJson=1 requests return plain JSON, not HTML - serve them with the right content type.
-	if vals.Get("asJson") == "1" {
-		return c.Blob(http.StatusOK, "application/json", pageHTML)
-	}
 	return c.HTMLBlob(http.StatusOK, pageHTML)
 }
 
@@ -1260,15 +1420,9 @@ func PostToGameHandler(c echo.Context) error {
 		vals = c.QueryParams()
 	}
 	payload, _ := c.FormParams()
-	pageHTML, err := bot.PostPageContent(vals, payload)
-	if err != nil {
-		c.Logger().Error(err)
-	}
+	pageHTML, _ := bot.PostPageContent(vals, payload)
 	pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = removeCookiesBanner(pageHTML)
-	if vals.Get("asJson") == "1" {
-		return c.Blob(http.StatusOK, "application/json", pageHTML)
-	}
 	return c.HTMLBlob(http.StatusOK, pageHTML)
 }
 
