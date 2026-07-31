@@ -48,42 +48,43 @@ import (
 // multiple goroutines (thread-safe)
 type OGame struct {
 	sync.Mutex
-	isEnabledAtom        atomic.Bool // atomic, prevent auto re login if we manually logged out
-	isLoggedInAtom       atomic.Bool // atomic, prevent auto re login if we manually logged out
-	isConnectedAtom      atomic.Bool // atomic, either or not communication between the bot and OGame is possible
-	lockedAtom           atomic.Bool // atomic, bot state locked/unlocked
-	chatConnectedAtom    atomic.Bool // atomic, either or not the chat is connected
-	state                string      // keep name of the function that currently lock the bot
-	parentCtx            context.Context
-	ctx                  context.Context
-	cancelCtx            context.CancelFunc
-	stateChangeCallbacks []func(locked bool, actor string)
-	quiet                bool
-	universe             string
-	username             string
-	password             string
-	otpSecret            string
-	bearerToken          string
-	language             string
-	playerID             int64
-	lobby                string
-	server               gameforge.Server
-	logger               *log.Logger
-	chatCallbacks        []func(msg ogame.ChatMsg)
-	wsCallbacks          mtx.RWMutexMap[string, func([]byte)]
-	auctioneerCallbacks  []func(any)
-	interceptorCallbacks []func(method, url string, params, payload url.Values, pageHTML []byte)
-	closeChatCtx         context.Context
-	closeChatCancel      context.CancelFunc
-	ws                   *websocket.Conn
-	taskRunnerInst       *taskRunner.TaskRunner[*Prioritize]
-	loginWrapper         func(LoginFn) error
-	loginProxyTransport  http.RoundTripper
-	extractor            extractor.Extractor
-	apiNewHostname       string
-	captchaCallback      gameforge.CaptchaSolver
-	device               *device.Device
-	cache                struct {
+	isEnabledAtom         atomic.Bool // atomic, prevent auto re login if we manually logged out
+	isLoggedInAtom        atomic.Bool // atomic, prevent auto re login if we manually logged out
+	isConnectedAtom       atomic.Bool // atomic, either or not communication between the bot and OGame is possible
+	lockedAtom            atomic.Bool // atomic, bot state locked/unlocked
+	chatConnectedAtom     atomic.Bool // atomic, either or not the chat is connected
+	state                 string      // keep name of the function that currently lock the bot
+	parentCtx             context.Context
+	ctx                   context.Context
+	cancelCtx             context.CancelFunc
+	stateChangeCallbacks  []func(locked bool, actor string)
+	quiet                 bool
+	hideAccountInfoInLogs bool
+	universe              string
+	username              string
+	password              string
+	otpSecret             string
+	bearerToken           string
+	language              string
+	playerID              int64
+	lobby                 string
+	server                gameforge.Server
+	logger                *log.Logger
+	chatCallbacks         []func(msg ogame.ChatMsg)
+	wsCallbacks           mtx.RWMutexMap[string, func([]byte)]
+	auctioneerCallbacks   []func(any)
+	interceptorCallbacks  []func(method, url string, params, payload url.Values, pageHTML []byte)
+	closeChatCtx          context.Context
+	closeChatCancel       context.CancelFunc
+	ws                    *websocket.Conn
+	taskRunnerInst        *taskRunner.TaskRunner[*Prioritize]
+	loginWrapper          func(LoginFn) error
+	loginProxyTransport   http.RoundTripper
+	extractor             extractor.Extractor
+	apiNewHostname        string
+	captchaCallback       gameforge.CaptchaSolver
+	device                *device.Device
+	cache                 struct {
 		serverData            ServerData
 		location              *time.Location
 		player                ogame.UserInfos
@@ -111,27 +112,28 @@ type OGame struct {
 
 // Params parameters for more fine-grained initialization
 type Params struct {
-	Ctx            context.Context
-	Username       string
-	Password       string
-	BearerToken    string // Gameforge auth bearer token
-	OTPSecret      string
-	Universe       string
-	Lang           string
-	PlayerID       int64
-	AutoLogin      bool
-	Proxy          string
-	ProxyUsername  string
-	ProxyPassword  string
-	ProxyType      string
-	ProxyLoginOnly bool
-	TLSConfig      *tls.Config
-	Lobby          string
-	APINewHostname string
-	Device         *device.Device
-	CaptchaSolver  gameforge.CaptchaSolver
-	Logger         *log.Logger
-	Quiet          bool
+	Ctx                   context.Context
+	Username              string
+	Password              string
+	BearerToken           string // Gameforge auth bearer token
+	OTPSecret             string
+	Universe              string
+	Lang                  string
+	PlayerID              int64
+	AutoLogin             bool
+	Proxy                 string
+	ProxyUsername         string
+	ProxyPassword         string
+	ProxyType             string
+	ProxyLoginOnly        bool
+	TLSConfig             *tls.Config
+	Lobby                 string
+	APINewHostname        string
+	Device                *device.Device
+	CaptchaSolver         gameforge.CaptchaSolver
+	Logger                *log.Logger
+	Quiet                 bool
+	HideAccountInfoInLogs bool
 }
 
 // New creates a new instance of OGame wrapper.
@@ -181,6 +183,7 @@ func newWithParams(params Params) (*OGame, error) {
 	b.enable()
 	b.quiet = params.Quiet
 	b.logger = params.Logger
+	b.hideAccountInfoInLogs = params.HideAccountInfoInLogs
 
 	b.universe = params.Universe
 	b.setOGameCredentials(params.Username, params.Password, params.OTPSecret, params.BearerToken)
@@ -2486,52 +2489,72 @@ func calcResources(price int64, planetResources ogame.PlanetResources, multiplie
 
 func (b *OGame) traderImportExportTrade(price int64, importToken string, planetResources ogame.PlanetResources, multiplier ogame.Multiplier) (string, error) {
 	payload := calcResources(price, planetResources, multiplier)
-	payload.Add("action", "trade")
+	payload.Add("action", "importExportTrade")
 	payload.Add("bid[honor]", "0")
 	payload.Add("token", importToken)
-	payload.Add("ajax", "1")
-	pageHTML1, err := b.postPageContent(url.Values{"page": {"ajax"}, "component": {"traderimportexport"}, "ajax": {"1"}, "action": {"trade"}, "asJson": {"1"}}, payload)
+	pageHTML1, err := b.postPageContent(url.Values{"page": {"ingame"}, "component": {"trader"}, "asJson": {"1"}}, payload)
 	if err != nil {
 		return "", err
 	}
-	// {"message":"You have bought a container.","error":false,"item":{"uuid":"40f6c78e11be01ad3389b7dccd6ab8efa9347f3c","itemText":"You have purchased 1 KRAKEN Bronze.","bargainText":"The contents of the container not appeal to you? For 500 Dark Matter you can exchange the container for another random container of the same quality. You can only carry out this exchange 2 times per daily offer.","bargainCost":500,"bargainCostText":"Costs: 500 Dark Matter","tooltip":"KRAKEN Bronze|Reduces the building time of buildings currently under construction by <b>30m<\/b>.<br \/><br \/>\nDuration: now<br \/><br \/>\nPrice: --- <br \/>\nIn Inventory: 1","image":"98629d11293c9f2703592ed0314d99f320f45845","amount":1,"rarity":"common"},"newToken":"07eefc14105db0f30cb331a8b7af0bfe"}
+	// {"components":[],"item":{...},"status":"success","success":true,"message":"Compraste um recipiente.","newAjaxToken":"9de5eeae939bf648cb72f0f8fd074ba1"}
 	var result struct {
-		Message      string
-		Error        bool
-		NewAjaxToken string
+		Message      string `json:"message"`
+		Success      bool   `json:"success"`
+		NewAjaxToken string `json:"newAjaxToken"`
 	}
 	if err := json.Unmarshal(pageHTML1, &result); err != nil {
 		return "", err
 	}
-	if result.Error {
+	if !result.Success {
 		return "", errors.New(result.Message)
 	}
 	return result.NewAjaxToken, nil
 }
 
 func (b *OGame) traderImportExportTakeItem(token string) error {
-	payload := url.Values{"action": {"takeItem"}, "token": {token}, "ajax": {"1"}}
-	pageHTML, err := b.postPageContent(url.Values{"page": {"ajax"}, "component": {"traderimportexport"}, "ajax": {"1"}, "action": {"takeItem"}, "asJson": {"1"}}, payload)
+	payload := url.Values{"action": {"importExportTakeItem"}, "token": {token}}
+	pageHTML, err := b.postPageContent(url.Values{"page": {"ingame"}, "component": {"trader"}, "asJson": {"1"}}, payload)
 	if err != nil {
 		return err
 	}
+	// {"components":[],"item":{...},"status":"success","success":true,"message":"Aceitaste a oferta e colocaste o item no teu inventário.","newAjaxToken":"52da67c0f139bbe31d1af21d7f4825fa"}
 	var result struct {
-		Message      string
-		Error        bool
-		NewAjaxToken string
+		Message      string `json:"message"`
+		Success      bool   `json:"success"`
+		NewAjaxToken string `json:"newAjaxToken"`
 	}
 	if err := json.Unmarshal(pageHTML, &result); err != nil {
 		return err
 	}
-	if result.Error {
+	if !result.Success {
 		return errors.New(result.Message)
 	}
-	// {"error":false,"message":"You have accepted the offer and put the item in your inventory.","item":{"name":"Bronze Deuterium Booster","image":"f0e514af79d0808e334e9b6b695bf864b861bdfa","imageLarge":"c7c2837a0b341d37383d6a9d8f8986f500db7bf9","title":"Bronze Deuterium Booster|+10% more Deuterium Synthesizer harvest on one planet<br \/><br \/>\nDuration: 1w<br \/><br \/>\nPrice: --- <br \/>\nIn Inventory: 134","effect":"+10% more Deuterium Synthesizer harvest on one planet","ref":"d9fa5f359e80ff4f4c97545d07c66dbadab1d1be","rarity":"common","amount":134,"amount_free":134,"amount_bought":0,"category":["d8d49c315fa620d9c7f1f19963970dea59a0e3be","e71139e15ee5b6f472e2c68a97aa4bae9c80e9da"],"currency":"dm","costs":"2500","isReduced":false,"buyable":false,"canBeActivated":true,"canBeBoughtAndActivated":false,"isAnUpgrade":false,"isCharacterClassItem":false,"hasEnoughCurrency":true,"cooldown":0,"duration":604800,"durationExtension":null,"totalTime":null,"timeLeft":null,"status":null,"extendable":false,"firstStatus":"effecting","toolTip":"Bronze Deuterium Booster|+10% more Deuterium Synthesizer harvest on one planet&lt;br \/&gt;&lt;br \/&gt;\nDuration: 1w&lt;br \/&gt;&lt;br \/&gt;\nPrice: --- &lt;br \/&gt;\nIn Inventory: 134","buyTitle":"This item is currently unavailable for purchase.","activationTitle":"Activate","moonOnlyItem":false,"newOffer":false,"noOfferMessage":"There are no further offers today. Please come again tomorrow."},"newToken":"dec779714b893be9b39c0bedf5738450","components":[],"newAjaxToken":"e20cf0a6ca0e9b43a81ccb8fe7e7e2e3"}
 	return nil
 }
 
+var pageTokenRegexp = regexp.MustCompile(`var token\s?=\s?"([^"]+)"`)
+
+func extractPageToken(pageHTML []byte) (string, error) {
+	m := pageTokenRegexp.FindSubmatch(pageHTML)
+	if len(m) != 2 {
+		return "", errors.New("unable to find page token")
+	}
+	return string(m[1]), nil
+}
+
 func (b *OGame) buyOfferOfTheDay() error {
-	pageHTML, err := b.postPageContent(url.Values{"page": {"ajax"}, "component": {"traderimportexport"}}, url.Values{"show": {"importexport"}, "ajax": {"1"}})
+	// The importexport POST below requires a page-level CSRF token (embedded as
+	// `var token = "...";` in the plain Trader page) in its body - without it the server
+	// silently serves the generic Trader hub instead of the actual offer-of-the-day panel.
+	traderHTML, err := b.getPageContent(url.Values{"page": {"ingame"}, "component": {"trader"}})
+	if err != nil {
+		return err
+	}
+	pageToken, err := extractPageToken(traderHTML)
+	if err != nil {
+		return err
+	}
+	pageHTML, err := b.postPageContent(url.Values{"page": {"ingame"}, "component": {"trader"}, "action": {"importexport"}, "ajax": {"1"}}, url.Values{"action": {"importexport"}, "token": {pageToken}, "ajax": {"1"}})
 	if err != nil {
 		return err
 	}
@@ -2719,7 +2742,6 @@ func (b *OGame) getLfBonuses() (out ogame.LfBonuses, err error) {
 	b.cache.lfBonuses = &bonuses
 	return bonuses, nil
 }
-
 
 func (b *OGame) getLfBonusesForCelestial(celestialID ogame.CelestialID) (out ogame.LfBonuses, err error) {
 	page, err := getPage[parser.LfBonusesPage](b, ChangePlanet(celestialID))

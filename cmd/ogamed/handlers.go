@@ -20,6 +20,7 @@ func PostToggleManualModeHandler(c echo.Context) error {
 	botMap := c.Get("botMap").(map[string]wrapper.Prioritizable)
 	txTimerMap := c.Get("manualModeTimeout").(map[string]*time.Timer)
 	txTimer := txTimerMap["timeout"]
+	manualModeTimeout := time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second
 
 	locked, state := bot.GetState()
 	if locked && state == "manual mode" {
@@ -28,7 +29,7 @@ func PostToggleManualModeHandler(c echo.Context) error {
 		tx.Done()
 		return c.JSON(http.StatusOK, false)
 	} else {
-		txTimer = time.NewTimer(30 * time.Second)
+		txTimer = time.NewTimer(manualModeTimeout)
 		txTimerMap["timeout"] = txTimer
 		tx := bot.BeginNamed("manual mode")
 		botMap["tx"] = tx
@@ -65,6 +66,7 @@ func GetFromGameHandler(c echo.Context) error {
 	botMap := c.Get("botMap").(map[string]wrapper.Prioritizable)
 	txTimerMap := c.Get("manualModeTimeout").(map[string]*time.Timer)
 	txTimer := txTimerMap["timeout"]
+	manualModeTimeout := time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second
 
 	vals := url.Values{"page": {"ingame"}, "component": {"overview"}}
 	if len(c.QueryParams()) > 0 {
@@ -74,7 +76,7 @@ func GetFromGameHandler(c echo.Context) error {
 	var pageHTML []byte
 	if locked && state == "manual mode" {
 		tx := botMap["tx"]
-		txTimer.Reset(30 * time.Second)
+		txTimer.Reset(manualModeTimeout)
 		pageHTML, _ = tx.GetPageContent(vals)
 	} else {
 		pageHTML, _ = bot.GetPageContent(vals)
@@ -94,16 +96,28 @@ func PostToGameHandler(c echo.Context) error {
 	botMap := c.Get("botMap").(map[string]wrapper.Prioritizable)
 	txTimerMap := c.Get("manualModeTimeout").(map[string]*time.Timer)
 	txTimer := txTimerMap["timeout"]
+	manualModeTimeout := time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second
 
 	vals := url.Values{"page": {"ingame"}, "component": {"overview"}}
 	if len(c.QueryParams()) > 0 {
 		vals = c.QueryParams()
 	}
+	// The game's own "Empire view" widget still calls page=ajax&component=empire, a v13.0.0
+	// dead endpoint (405) - the Local Proxy just relayed it verbatim. Since we already know the
+	// working v13 shape (page=standalone), rewrite it here before forwarding instead of passing
+	// the browser's broken request through. page=standalone must be fetched via GET, not POST
+	// (matching getEmpireHtml) - POSTing it returns a generic "An error has occured!" text body.
+	isEmpireRewrite := vals.Get("component") == "empire" && vals.Get("page") == "ajax"
+	if isEmpireRewrite {
+		vals = url.Values{"page": {"standalone"}, "component": {"empire"}, "planetType": {vals.Get("planetType")}}
+	}
 	payload, _ := c.FormParams()
 	locked, state := bot.GetState()
 	var pageHTML []byte
-	if state == "manual mode" && locked {
-		txTimer.Reset(30 * time.Second)
+	if isEmpireRewrite {
+		pageHTML, _ = bot.GetPageContent(vals)
+	} else if state == "manual mode" && locked {
+		txTimer.Reset(manualModeTimeout)
 		tx := botMap["tx"]
 		pageHTML, _ = tx.PostPageContent(vals, payload)
 	} else {
@@ -232,43 +246,44 @@ func ingameUi(pageHTML []byte, state string, locked bool) []byte {
 	tmpHTML := string(pageHTML)
 
 	toReplace := `<script>
-	var btn1 = document.createElement("BUTTON");`
-	if state == "manual mode" && locked {
-		toReplace += `
-        var t = document.createTextNode("Manual mode (on)");
-		`
-	} else {
-		toReplace += `
-        var t = document.createTextNode("Manual mode (off)");
-		`
-	}
-	toReplace += `
-        btn1.style.height = '20px';
-        btn1.style.width = '130px';
-        btn1.style.display = 'block';
-        btn1.style.marginBottom = '3px';
-        btn1.appendChild(t);
-        btn1.onclick = function() {
-            var formData = new FormData();
-            $.ajax({
-                url: "/bot/toggle-manual-mode", data: formData, type: 'POST', processData: false, contentType: false,
-                success: function(res) {
-                    $(btn1).text("Manual mode (" + (res ? "on" : "off") + ")");
-                },
-                error: function(req) { console.log(req.responseText); },
-            });
-        };
+	var btn1 = document.createElement("BUTTON");
+	btn1.id = "manual-mode-btn";
+	btn1.title = "Manual mode (` + map[bool]string{true: "on", false: "off"}[state == "manual mode" && locked] + `) - click to toggle";
+	btn1.style.height = '24px';
+	btn1.style.width = '24px';
+	btn1.style.padding = '0';
+	btn1.style.margin = '0';
+	btn1.style.border = 'none';
+	btn1.style.borderRadius = '50%';
+	btn1.style.cursor = 'pointer';
+	btn1.style.opacity = '0';
+	btn1.style.transition = 'opacity .15s';
+	btn1.onmouseenter = function() { btn1.style.opacity = '1'; };
+	btn1.onmouseleave = function() { btn1.style.opacity = '0'; };
+	btn1.style.background = '` + map[bool]string{true: "#e74c3c", false: "#2ecc71"}[state == "manual mode" && locked] + `';
+	btn1.onclick = function() {
+		var formData = new FormData();
+		$.ajax({
+			url: "/bot/toggle-manual-mode", data: formData, type: 'POST', processData: false, contentType: false,
+			success: function(res) {
+				btn1.style.background = res ? '#e74c3c' : '#2ecc71';
+				btn1.title = "Manual mode (" + (res ? "on" : "off") + ") - click to toggle";
+			},
+			error: function(req) { console.log(req.responseText); },
+		});
+	};
 
-		var div = document.createElement("div");
-        div.style.position = 'fixed';
-        div.style.right = '10px';
-        div.style.top = '10px';
-        div.style.zIndex = '3001';
-        div.appendChild(btn1);
+	var div = document.createElement("div");
+	div.id = "manual-mode-btn-container";
+	div.style.position = 'fixed';
+	div.style.right = '6px';
+	div.style.top = '6px';
+	div.style.zIndex = '3001';
+	div.appendChild(btn1);
 
-		document.body.prepend(div);
+	document.body.prepend(div);
 
-		</script>`
+	</script>`
 
 	toReplace += `</body>`
 
