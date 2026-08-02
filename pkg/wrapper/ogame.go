@@ -2506,7 +2506,13 @@ func (b *OGame) traderImportExportTrade(price int64, importToken string, planetR
 		return "", err
 	}
 	if !result.Success {
-		return "", errors.New(result.Message)
+		msg := result.Message
+		if msg == "" {
+			// The server responds success:false with no message when the offer was
+			// already claimed today, or its price changed since it was fetched.
+			msg = "trade rejected by server with no message (offer likely already claimed today, or price changed)"
+		}
+		return "", errors.New(msg)
 	}
 	return result.NewAjaxToken, nil
 }
