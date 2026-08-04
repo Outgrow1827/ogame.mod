@@ -260,7 +260,82 @@ UnsafePhalanx(ogame.MoonID, ogame.Coordinate) ([]ogame.Fleet, error)
 
 # ogamed service
 
-Download [ogamed binary here](https://github.com/alaingilbert/ogame/releases)  
+**This fork's `ogamed` is not the same as upstream's** — `cmd/ogamed` here has extra
+TBot-specific routes (alliance class, lifeform bonuses, artifacts, manual mode, log
+privacy, etc., see the route list below) that the [upstream binary
+releases](https://github.com/alaingilbert/ogame/releases) don't have. **Always build
+from source** rather than downloading a release from there.
+
+### Building from source
+
+**Step 1 — install Go.** Download and install [Go 1.23 or newer](https://go.dev/dl/)
+(pick the installer for your OS). To confirm it worked, open a terminal (Command
+Prompt/PowerShell on Windows, Terminal on Linux/macOS) and run:
+
+```
+go version
+```
+It should print something like `go version go1.23.0 windows/amd64`. If you get
+"command not found", Go isn't installed correctly yet — reinstall and make sure to
+restart the terminal afterward (installers usually need that to update `PATH`).
+
+**Step 2 — get the source code.** If you haven't already, download/clone this repo,
+then open a terminal **inside the folder you cloned/downloaded it to** (the repo
+root — the same folder that contains this `README.md` and the `cmd/` folder).
+
+**Step 3 — build.** Run:
+
+```
+go build -ldflags "-s -w -X main.version=3.4.6" -o ogamed.exe ./cmd/ogamed
+```
+
+What this does, piece by piece:
+- `go build` — compiles the code.
+- `-o ogamed.exe` — names the output file `ogamed.exe` (drop the `.exe` if you're on
+  Linux/macOS).
+- `./cmd/ogamed` — tells Go which program to build (this repo has several; this is
+  the one that matters here).
+- `-ldflags "-s -w -X main.version=3.4.6"` — optional but recommended: `-s -w` strips
+  debug info to make the file smaller, `-X main.version=3.4.6` embeds a version
+  number so the binary reports it correctly (e.g. in its `/bot/server/version`-style
+  info) instead of showing a blank/default one.
+
+**Step 4 — confirm it worked.** You should now have an `ogamed.exe` file in the
+folder, typically 15-20MB. Run it once directly to sanity-check it starts without
+crashing immediately:
+```
+./ogamed.exe --help
+```
+(Ctrl+C to stop it.) If that prints a list of command-line flags instead of an error,
+the build is good.
+
+**Alternative: `make`.** If you have `make` installed (standard on Linux/macOS; on
+Windows it needs WSL or MSYS2 — not available in a plain Command Prompt/PowerShell),
+the `Makefile` target does the same build, plus embeds the version from `git
+describe` automatically instead of a fixed number:
+
+```
+make build-ogamed
+```
+which outputs to `bin/ogamed.exe` instead of the repo root.
+
+**Cross-compiling for Windows from Linux/macOS** (only needed if you're building on
+one OS but deploying to another, e.g. a CI server): set `GOOS`/`GOARCH` before the
+same `go build` command from Step 3:
+
+```
+GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=3.4.6" -o ogamed.exe ./cmd/ogamed
+```
+
+**Deploying**: `ogamed.exe` is a single self-contained binary — copy it directly into
+the TBot deployment folder (same directory as `TBot.exe`), overwriting the old copy.
+TBot launches it as a subprocess automatically; no separate install step is needed.
+If you're actively developing both `ogame` and `TBot` side by side, `TBot/ogamed.exe`
+inside the `TBot` repo itself is the source file its own build copies into every
+`dotnet build`/`publish` output (via a `<Content Include>` in `TBot.csproj`) — keep
+that copy up to date too, or the next TBot build will silently redeploy a stale
+`ogamed.exe` alongside your freshly built `TBot.exe`.
+
 Full documentation [here](https://github.com/alaingilbert/ogame/wiki/ogamed-full-documentation)
 
 ```
