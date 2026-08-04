@@ -269,8 +269,17 @@ from source** rather than downloading a release from there.
 ### Building from source
 
 **Step 1 — install Go.** Download and install [Go 1.23 or newer](https://go.dev/dl/)
-(pick the installer for your OS). To confirm it worked, open a terminal (Command
-Prompt/PowerShell on Windows, Terminal on Linux/macOS) and run:
+(pick the installer for your OS). On Windows, you can instead install it from a
+terminal with [winget](https://learn.microsoft.com/windows/package-manager/winget/)
+(built into Windows 10/11):
+
+```
+winget install GoLang.Go
+```
+
+To confirm it worked, open a terminal (Command Prompt/PowerShell on Windows,
+Terminal on Linux/macOS) — **a new one, if you just installed Go, so it picks up
+the updated PATH** — and run:
 
 ```
 go version
