@@ -295,7 +295,7 @@ root — the same folder that contains this `README.md` and the `cmd/` folder).
 **Step 3 — build.** Run:
 
 ```
-go build -ldflags "-s -w -X main.version=3.4.6" -o ogamed.exe ./cmd/ogamed
+go build -ldflags "-s -w -X main.version=3.4.7" -o ogamed.exe ./cmd/ogamed
 ```
 
 What this does, piece by piece:
@@ -304,8 +304,8 @@ What this does, piece by piece:
   Linux/macOS).
 - `./cmd/ogamed` — tells Go which program to build (this repo has several; this is
   the one that matters here).
-- `-ldflags "-s -w -X main.version=3.4.6"` — optional but recommended: `-s -w` strips
-  debug info to make the file smaller, `-X main.version=3.4.6` embeds a version
+- `-ldflags "-s -w -X main.version=3.4.7"` — optional but recommended: `-s -w` strips
+  debug info to make the file smaller, `-X main.version=3.4.7` embeds a version
   number so the binary reports it correctly (e.g. in its `/bot/server/version`-style
   info) instead of showing a blank/default one.
 
@@ -333,7 +333,7 @@ one OS but deploying to another, e.g. a CI server): set `GOOS`/`GOARCH` before t
 same `go build` command from Step 3:
 
 ```
-GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=3.4.6" -o ogamed.exe ./cmd/ogamed
+GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=3.4.7" -o ogamed.exe ./cmd/ogamed
 ```
 
 **Deploying**: `ogamed.exe` is a single self-contained binary — copy it directly into
