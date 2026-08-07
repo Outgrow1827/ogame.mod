@@ -2,14 +2,10 @@
 .env
 .idea
 dist
-cmd/scripts/bindata
-cmd/bot*
 *.cover
 cover.out
 vendor
 /ogame.code-workspace
-cmd/ogamed/bin
-cmd/ogamed/ogamed.exe
 /ogamed.exe
 /.vs
 *.png
