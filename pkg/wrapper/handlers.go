@@ -612,6 +612,29 @@ func GetLfResearchHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(res))
 }
 
+// GetArtifactsHandler returns the artifact stock and capacity reported by the
+// lifeform research page for the selected planet.
+func GetArtifactsHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	planetID, err := utils.ParseI64(c.Param("planetID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid planet id"))
+	}
+
+	details, err := bot.GetLfResearchDetails(ogame.CelestialID(planetID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+
+	return c.JSON(http.StatusOK, SuccessResp(struct {
+		ArtifactsCollected int64 `json:"artifactsCollected"`
+		ArtifactsLimit     int64 `json:"artifactsLimit"`
+	}{
+		ArtifactsCollected: details.ArtefactsCollected,
+		ArtifactsLimit:     details.ArtefactsLimit,
+	}))
+}
+
 // GetResourcesBuildingsHandler ...
 func GetResourcesBuildingsHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
