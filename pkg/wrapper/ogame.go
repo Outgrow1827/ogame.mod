@@ -2875,7 +2875,11 @@ func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, ma
 	if err != nil {
 		return 0, 0, err
 	}
-	rgx := regexp.MustCompile(`id="slot01"\s+class="slot">\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
+	// class="slot " can carry a trailing space before the closing quote (confirmed via a real
+	// HAR capture, 2026-08-27) when no extra CSS class is appended - the old `class="slot">`
+	// literal never matched that, silently reporting "unable to find artifacts counter" even
+	// when the account has Artifacts unlocked and the counter is right there in the page.
+	rgx := regexp.MustCompile(`id="slot01"\s+class="slot[^"]*"\s*>\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
 	m := rgx.FindSubmatch(pageHTML)
 	if len(m) < 3 {
 		return 0, 0, errors.New("unable to find artifacts counter")
