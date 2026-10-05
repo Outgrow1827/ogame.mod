@@ -273,6 +273,37 @@ func GetEspionageReportForHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, SuccessResp(planet))
 }
 
+// GetDiscoveryCooldownHandler ...
+func GetDiscoveryCooldownHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	celestialID, err := utils.ParseI64(c.Param("celestialID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid celestial id"))
+	}
+	cooldown, err := bot.GetDiscoveryCooldown(ogame.CelestialID(celestialID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(map[string]any{
+		"Available":       cooldown <= 0,
+		"CooldownSeconds": int64(cooldown.Seconds()),
+	}))
+}
+
+// GetCombatReportSummaryForFleetHandler ...
+func GetCombatReportSummaryForFleetHandler(c echo.Context) error {
+	bot := c.Get("bot").(*OGame)
+	fleetID, err := utils.ParseI64(c.Param("fleetid"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "invalid fleetid"))
+	}
+	report, err := bot.GetCombatReportSummaryForFleet(ogame.FleetID(fleetID))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ErrorResp(500, err.Error()))
+	}
+	return c.JSON(http.StatusOK, SuccessResp(report))
+}
+
 // SendMessageHandler ...
 // curl 127.0.0.1:1234/bot/send-message -d 'playerID=123&message="Sup boi!"'
 func SendMessageHandler(c echo.Context) error {
@@ -1491,7 +1522,7 @@ func DeleteMessageHandler(c echo.Context) error {
 func DeleteEspionageMessagesHandler(c echo.Context) error {
 	bot := c.Get("bot").(*OGame)
 	if err := bot.DeleteAllMessagesFromTab(20); err != nil { // 20 = Espionage Reports
-		return c.JSON(http.StatusBadRequest, ErrorResp(400, "Unable to delete Espionage Reports"))
+		return c.JSON(http.StatusBadRequest, ErrorResp(400, "Unable to delete Espionage Reports: "+err.Error()))
 	}
 	return c.JSON(http.StatusOK, SuccessResp(nil))
 }

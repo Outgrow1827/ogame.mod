@@ -126,6 +126,12 @@ func main() {
 			Sources: cli.EnvVars("OGAMED_NEW_HOSTNAME"),
 		},
 		&cli.StringFlag{
+			Name:    "server-url",
+			Usage:   "Server URL eg: https://ogamexl.com (alias for --api-new-hostname)",
+			Value:   "http://127.0.0.1:8080",
+			Sources: cli.EnvVars("OGAMED_SERVER_URL"),
+		},
+		&cli.StringFlag{
 			Name:    "basic-auth-username",
 			Usage:   "Basic auth username eg: admin",
 			Value:   "",
@@ -264,7 +270,10 @@ func start(ctx context.Context, c *cli.Command) error {
 	lobby := c.String("lobby")
 	manualModeTimeoutSec := int(c.Int("manual-mode-timeout"))
 	hideAccountInfoInLogs := c.Bool("hide-account-info-in-logs")
-	apiNewHostname := c.String("api-new-hostname")
+ 	apiNewHostname := c.String("api-new-hostname")
+	if c.IsSet("server-url") {
+		apiNewHostname = c.String("server-url")
+	}
 	enableTLS := c.Bool("enable-tls")
 	tlsKeyFile := c.String("tls-key-file")
 	tlsCertFile := c.String("tls-cert-file")
@@ -455,6 +464,8 @@ func start(ctx context.Context, c *cli.Command) error {
 	e.GET("/bot/espionage-report", wrapper.GetEspionageReportMessagesHandler)
 	e.POST("/bot/delete-report/:messageID", wrapper.DeleteMessageHandler)
 	e.POST("/bot/delete-all-espionage-reports", wrapper.DeleteEspionageMessagesHandler)
+	e.GET("/bot/combat-report/fleet/:fleetid", wrapper.GetCombatReportSummaryForFleetHandler)
+	e.GET("/bot/planets/:celestialID/discovery-cooldown", wrapper.GetDiscoveryCooldownHandler)
 	e.POST("/bot/delete-all-reports/:tabIndex", wrapper.DeleteMessagesFromTabHandler)
 	e.GET("/bot/attacks", wrapper.GetAttacksHandler)
 	e.GET("/bot/get-auction", wrapper.GetAuctionHandler)

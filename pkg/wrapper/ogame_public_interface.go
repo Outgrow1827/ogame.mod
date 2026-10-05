@@ -455,6 +455,12 @@ func (b *OGame) GetArtifacts(celestialID ogame.CelestialID) (int64, int64, error
 	return b.WithPriority(taskRunner.Normal).GetArtifacts(celestialID)
 }
 
+// GetDiscoveryCooldown returns how long until the account-wide AutoDiscovery/LfDiscovery action is
+// available again (zero if available now).
+func (b *OGame) GetDiscoveryCooldown(celestialID ogame.CelestialID) (time.Duration, error) {
+	return b.WithPriority(taskRunner.Normal).GetDiscoveryCooldown(celestialID)
+}
+
 // GetCachedResearch returns cached researches
 func (b *OGame) GetCachedResearch() ogame.Researches {
 	return b.WithPriority(taskRunner.Normal).GetCachedResearch()

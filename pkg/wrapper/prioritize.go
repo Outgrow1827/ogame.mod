@@ -330,6 +330,12 @@ func (b *Prioritize) GetArtifacts(celestialID ogame.CelestialID) (int64, int64, 
 	return b.bot.getArtifacts(celestialID)
 }
 
+func (b *Prioritize) GetDiscoveryCooldown(celestialID ogame.CelestialID) (time.Duration, error) {
+	b.begin("GetDiscoveryCooldown")
+	defer b.done()
+	return b.bot.getDiscoveryCooldown(celestialID)
+}
+
 func (b *Prioritize) GetCachedResearch() ogame.Researches {
 	b.begin("GetCachedResearch")
 	defer b.done()
