@@ -4180,14 +4180,26 @@ func (b *OGame) deleteAllMessagesFromTab(tabID ogame.MessagesTabID) error {
 		"showTrash":    {"false"},
 		"token":        {token},
 	}
-	pageHTML, err := b.postPageContent(url.Values{"page": {"componentOnly"}, "component": {"messages"}, "action": {"flagDeleteAll"}}, payload)
+	// Unlike deleteMessage (single delete), this was missing asJson=1 - without it the
+	// game re-renders the full messages page as HTML instead of returning the JSON envelope,
+	// so json.Unmarshal below always failed with "invalid character '<' looking for beginning
+	// of value". The failure was previously invisible because callers ignored it entirely.
+	pageHTML, err := b.postPageContent(url.Values{"page": {"componentOnly"}, "component": {"messages"}, "asJson": {"1"}, "action": {"flagDeleteAll"}}, payload)
+	if err != nil {
+		return err
+	}
 	var res struct {
 		Status       string `json:"status"`
 		Message      string `json:"message"`
 		NewAjaxToken string `json:"newAjaxToken"`
 	}
-	_ = json.Unmarshal(pageHTML, &res)
-	return err
+	if err := json.Unmarshal(pageHTML, &res); err != nil {
+		return err
+	}
+	if res.Status != "success" {
+		return errors.New(res.Message)
+	}
+	return nil
 }
 
 func energyProduced(temp ogame.Temperature, resourcesBuildings ogame.ResourcesBuildings, resSettings ogame.ResourceSettings, energyTechnology int64) int64 {
