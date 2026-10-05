@@ -32,15 +32,6 @@ func (e *Extractor) ExtractLfBonusesFromDoc(doc *goquery.Document) (ogame.LfBonu
 	return extractLfBonusesFromDoc(doc)
 }
 
-// ExtractOfferOfTheDay ...
-func (e *Extractor) ExtractOfferOfTheDay(pageHTML []byte) (int64, string, ogame.PlanetResources, ogame.Multiplier, error) {
-	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(pageHTML))
-	if err != nil {
-		return 0, "", nil, ogame.Multiplier{}, err
-	}
-	return extractOfferOfTheDayFromDoc(doc)
-}
-
 // ExtractCancelFleetToken ...
 func (e *Extractor) ExtractCancelFleetToken(pageHTML []byte, fleetID ogame.FleetID) (string, error) {
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(pageHTML))
