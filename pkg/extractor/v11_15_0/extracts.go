@@ -30,6 +30,12 @@ func extractCombatReportMessagesFromDoc(doc *goquery.Document) ([]ogame.CombatRe
 							Amount   int64
 						}
 					}
+					Debris struct {
+						Resources []struct {
+							Resource string
+							Amount   int64
+						}
+					}
 				}
 				_ = json.Unmarshal([]byte(resultStr), &result)
 
@@ -69,13 +75,15 @@ func extractCombatReportMessagesFromDoc(doc *goquery.Document) ([]ogame.CombatRe
 						report.Metal = resource.Amount
 					}
 				}
-
-				debrisFieldTitle := s.Find("span.msg_content div.combatLeftSide span").Eq(2).AttrOr("title", "0")
-				report.DebrisField = utils.ParseInt(debrisFieldTitle)
-				resText := s.Find("span.msg_content div.combatLeftSide span").Eq(1).Text()
-				m = regexp.MustCompile(`[\d.,]+[^\d]*([\d.,]+)`).FindStringSubmatch(resText)
-				if len(m) == 2 {
-					report.Loot = utils.ParseInt(m[1])
+				// Loot/DebrisField used to be scraped from `span.msg_content div.combatLeftSide span`
+				// text/title, a markup structure the current game version's message HTML no longer
+				// uses (confirmed live 2026-08-29: real combat report HTML uses .basicInfo/.miscInfo
+				// with .msg_ctn spans instead) - that selector silently matched nothing, so Loot and
+				// DebrisField always came back 0 regardless of the real result. Both are computed
+				// directly from data-raw-result JSON instead, which is stable across markup changes.
+				report.Loot = report.Metal + report.Crystal + report.Deuterium
+				for _, resource := range result.Debris.Resources {
+					report.DebrisField += resource.Amount
 				}
 				msgDate, _ := time.Parse("02.01.2006 15:04:05", s.Find("div.msgDate").Text())
 				report.CreatedAt = msgDate
@@ -401,6 +409,13 @@ func extractExpeditionMessagesFromDoc(doc *goquery.Document, location *time.Loca
 				msg.Coordinate.Type = ogame.PlanetType
 				msg.Content, _ = s.Find("div.msgContent").Html()
 				msg.Content = strings.TrimSpace(msg.Content)
+				msg.GlobalTypeID, _ = utils.ParseI64(s.Find("div.rawMessageData").AttrOr("data-raw-messagetype", "0"))
+				msg.DiscoveryType = s.Find("div.rawMessageData").AttrOr("data-raw-discoverytype", "")
+				msg.ArtifactsFound, _ = utils.ParseI64(s.Find("div.rawMessageData").AttrOr("data-raw-artifactsfound", "0"))
+				msg.ArtifactsSize = s.Find("div.rawMessageData").AttrOr("data-raw-artifactssize", "")
+				msg.LifeformDiscovered = s.Find("div.rawMessageData").AttrOr("data-raw-lifeformdiscovered", "")
+				msg.LifeformGainedExperience, _ = utils.ParseI64(s.Find("div.rawMessageData").AttrOr("data-raw-lifeformgainedexperience", "0"))
+				msg.LifeformAlreadyOwned = s.Find("div.rawMessageData").AttrOr("data-raw-lifeformalreadyowned", "0") == "1"
 
 				var resStruct struct {
 					Metal      int64 `json:"metal"`
