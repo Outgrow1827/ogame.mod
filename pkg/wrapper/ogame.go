@@ -2866,6 +2866,73 @@ func (b *OGame) getLfBonusesForCelestial(celestialID ogame.CelestialID) (out oga
 	return bonuses, nil
 }
 
+// getDiscoveryCooldown reads the account-wide "search for life forms again in X" cooldown shown
+// on the overview page (`.planetDiscoverIcons.planetDiscoverUnavailable`, `data-tooltip-title`).
+// This is separate from per-system position availability (GetPositionsAvailableForDiscoveryFleet) -
+// confirmed live 2026-08-29 via a real overview page capture that the account can be on a
+// multi-day cooldown for the discovery action itself, which no amount of per-system scanning can
+// see around. Zero duration + no error means no cooldown is active (fully available now).
+func (b *OGame) getDiscoveryCooldown(celestialID ogame.CelestialID) (time.Duration, error) {
+	pageHTML, err := b.getPageContent(url.Values{
+		"page":      {"ingame"},
+		"component": {"overview"},
+		"cp":        {utils.FI64(int64(celestialID))},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(pageHTML))
+	if err != nil {
+		return 0, err
+	}
+
+	sel := doc.Find(".planetDiscoverIcons.planetDiscoverUnavailable")
+	if sel.Length() == 0 {
+		return 0, nil // no cooldown element present - discovery is available now
+	}
+	title, exists := sel.Attr("data-tooltip-title")
+	if !exists {
+		return 0, nil
+	}
+
+	return parseDiscoveryCooldownDuration(title), nil
+}
+
+// parseDiscoveryCooldownDuration extracts a "4d 21h 54m 21s"-style duration from the tooltip text.
+// Any of the four components can be absent (e.g. "21m 3s" alone), so each is matched independently
+// rather than requiring all four - a partial mismatch degrades to whatever components did match
+// instead of returning zero and silently ignoring a real cooldown.
+func parseDiscoveryCooldownDuration(text string) time.Duration {
+	days := regexp.MustCompile(`(\d+)\s*d`).FindStringSubmatch(text)
+	hours := regexp.MustCompile(`(\d+)\s*h`).FindStringSubmatch(text)
+	minutes := regexp.MustCompile(`(\d+)\s*m(?:in)?\b`).FindStringSubmatch(text)
+	seconds := regexp.MustCompile(`(\d+)\s*s`).FindStringSubmatch(text)
+
+	var total time.Duration
+	if len(days) > 1 {
+		if v, err := utils.ParseI64(days[1]); err == nil {
+			total += time.Duration(v) * 24 * time.Hour
+		}
+	}
+	if len(hours) > 1 {
+		if v, err := utils.ParseI64(hours[1]); err == nil {
+			total += time.Duration(v) * time.Hour
+		}
+	}
+	if len(minutes) > 1 {
+		if v, err := utils.ParseI64(minutes[1]); err == nil {
+			total += time.Duration(v) * time.Minute
+		}
+	}
+	if len(seconds) > 1 {
+		if v, err := utils.ParseI64(seconds[1]); err == nil {
+			total += time.Duration(v) * time.Second
+		}
+	}
+	return total
+}
+
 func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, max int64, err error) {
 	pageHTML, err := b.getPageContent(url.Values{
 		"page":      {"ingame"},
