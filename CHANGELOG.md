@@ -2,7 +2,9 @@
 
 Log of changes in our fork. History below `v13-fix.3` is inherited from `ronnie32/ogame.mod`'s `fix-ogamed-v13-discovery` + `fix/artifact-inventory-endpoint` branches (the base this fork now builds on); the `[Unreleased]` section at the top lists this fork's own changes, generated from the real commit history and diff content (`git log` / `git diff`).
 
-## [Unreleased] — Outgrow1827 fork
+## [Unreleased]
+
+## v13-fix.5 — 2026-10-16 (Outgrow1827 fork)
 
 ### Added
 
