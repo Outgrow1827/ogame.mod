@@ -106,6 +106,12 @@ func main() {
 			Value:   "lobby",
 			Sources: cli.EnvVars("OGAMED_LOBBY"),
 		},
+		&cli.IntFlag{
+			Name:    "manual-mode-timeout",
+			Usage:   "Manual mode inactivity timeout in seconds",
+			Value:   30,
+			Sources: cli.EnvVars("OGAMED_MANUAL_MODE_TIMEOUT"),
+		},
 		&cli.StringFlag{
 			Name:    "api-new-hostname",
 			Usage:   "New OGame Hostname eg: https://someuniverse.example.com",
@@ -231,6 +237,7 @@ func start(ctx context.Context, c *cli.Command) error {
 	password := c.String("password")
 	language := c.String("language")
 	autoLogin := c.Bool("auto-login")
+	manualModeTimeoutSec := int(c.Int("manual-mode-timeout"))
 	host := c.String("host")
 	port := int(c.Int("port"))
 	proxyAddr := c.String("proxy")
@@ -351,6 +358,7 @@ func start(ctx context.Context, c *cli.Command) error {
 			ctx.Set("commit", commit)
 			ctx.Set("date", date)
 			ctx.Set("manualModeTimeout", manualModeTimeout)
+			ctx.Set("manualModeTimeoutSec", manualModeTimeoutSec)
 			ctx.Set("botMap", botMap)
 			return next(ctx)
 		}

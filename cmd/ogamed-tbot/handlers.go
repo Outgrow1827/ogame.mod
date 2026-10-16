@@ -28,7 +28,7 @@ func PostToggleManualModeHandler(c echo.Context) error {
 		tx.Done()
 		return c.JSON(http.StatusOK, false)
 	} else {
-		txTimer = time.NewTimer(30 * time.Second)
+		txTimer = time.NewTimer(time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second)
 		txTimerMap["timeout"] = txTimer
 		tx := bot.BeginNamed("manual mode")
 		botMap["tx"] = tx
@@ -72,12 +72,18 @@ func GetFromGameHandler(c echo.Context) error {
 	}
 	locked, state := bot.GetState()
 	var pageHTML []byte
+	var err error
 	if locked && state == "manual mode" {
 		tx := botMap["tx"]
-		txTimer.Reset(30 * time.Second)
-		pageHTML, _ = tx.GetPageContent(vals)
+		txTimer.Reset(time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second)
+		pageHTML, err = tx.GetPageContent(vals)
 	} else {
-		pageHTML, _ = bot.GetPageContent(vals)
+		pageHTML, err = bot.GetPageContent(vals)
+	}
+	// A failed fetch used to be discarded and an empty body returned with HTTP 200, so TBot parsed
+	// an empty page as "0 resources / 0 buildings / 0 ships" and acted on it. Report the failure.
+	if err != nil {
+		return c.String(http.StatusBadGateway, err.Error())
 	}
 	//pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = replaceHostnameWithRegxp(bot, pageHTML, c.Request())
@@ -102,12 +108,18 @@ func PostToGameHandler(c echo.Context) error {
 	payload, _ := c.FormParams()
 	locked, state := bot.GetState()
 	var pageHTML []byte
+	var err error
 	if state == "manual mode" && locked {
-		txTimer.Reset(30 * time.Second)
+		txTimer.Reset(time.Duration(c.Get("manualModeTimeoutSec").(int)) * time.Second)
 		tx := botMap["tx"]
-		pageHTML, _ = tx.PostPageContent(vals, payload)
+		pageHTML, err = tx.PostPageContent(vals, payload)
 	} else {
-		pageHTML, _ = bot.PostPageContent(vals, payload)
+		pageHTML, err = bot.PostPageContent(vals, payload)
+	}
+	// A failed fetch used to be discarded and an empty body returned with HTTP 200, so TBot parsed
+	// an empty page as "0 resources / 0 buildings / 0 ships" and acted on it. Report the failure.
+	if err != nil {
+		return c.String(http.StatusBadGateway, err.Error())
 	}
 	//pageHTML = replaceHostname(bot, pageHTML)
 	pageHTML = replaceHostnameWithRegxp(bot, pageHTML, c.Request())

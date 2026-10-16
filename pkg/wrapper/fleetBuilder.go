@@ -62,7 +62,13 @@ func (f *FleetBuilder) SetTx(tx Prioritizable) *FleetBuilder {
 
 // SetOrigin ...
 func (f *FleetBuilder) SetOrigin(v IntoCelestial) *FleetBuilder {
-	f.origin, _ = f.b.GetCachedCelestial(v)
+	// Keep the lookup error instead of discarding it: otherwise origin silently ends up nil and the
+	// send later fails with a generic ErrInvalidOrigin that hides the real cause.
+	origin, err := f.b.GetCachedCelestial(v)
+	f.origin = origin
+	if err != nil {
+		f.err = err
+	}
 	return f
 }
 
@@ -229,25 +235,40 @@ func (f *FleetBuilder) flightTime(checkTarget bool) (secs, fuel int64) {
 
 func (f *FleetBuilder) sendNow(tx Prioritizable) error {
 	if f.origin == nil {
-		f.err = ErrInvalidOrigin
+		if f.err == nil {
+			f.err = ErrInvalidOrigin
+		}
 		return f.err
 	}
 
 	// Set all ships
 	if f.allShips {
-		f.ships, _ = tx.GetShips(f.origin.GetID())
+		ships, err := tx.GetShips(f.origin.GetID())
+		if err != nil {
+			f.err = err
+			return f.err
+		}
+		f.ships = ships
 	}
 
 	var fuel int64
 	var planetResources ogame.Resources
 	if f.minimumDeuterium > 0 {
-		planetResources, _ = tx.GetResources(f.origin.GetID())
+		// A failed fetch used to leave planetResources zero-valued; the subtraction below then went
+		// negative and was sent as the fleet's deuterium payload. Abort instead.
+		res, err := tx.GetResources(f.origin.GetID())
+		if err != nil {
+			f.err = err
+			return f.err
+		}
+		planetResources = res
 		_, fuel = tx.FlightTime(f.origin.GetCoordinate(), f.destination, f.speed, f.ships, f.mission, f.holdingTime)
 	}
 
 	if f.minimumDeuterium > 0 && f.resources.Deuterium > 0 {
 		planetResources.Deuterium = planetResources.Deuterium - (fuel + 10) - f.minimumDeuterium
-		f.resources.Deuterium = min(f.resources.Deuterium, planetResources.Deuterium)
+		// Clamp at 0: a planet holding less than fuel+reserve legitimately goes negative here.
+		f.resources.Deuterium = max(0, min(f.resources.Deuterium, planetResources.Deuterium))
 	}
 
 	payload := f.resources
@@ -256,7 +277,12 @@ func (f *FleetBuilder) sendNow(tx Prioritizable) error {
 		// Calculate cargo
 		cargoCapacity := f.cargo()
 		if f.minimumDeuterium <= 0 {
-			planetResources, _ = tx.GetResources(f.origin.GetID())
+			res, err := tx.GetResources(f.origin.GetID())
+			if err != nil {
+				f.err = err
+				return f.err
+			}
+			planetResources = res
 		}
 		if f.resources.Deuterium == -1 {
 			if f.minimumDeuterium > 0 {
@@ -297,7 +323,13 @@ func (f *FleetBuilder) SendNow() (ogame.Fleet, error) {
 		if f.recallIn > 0 {
 			go func() {
 				time.Sleep(time.Duration(f.recallIn) * time.Second)
-				_ = f.b.CancelFleet(f.fleet.ID)
+				// A failed recall means the fleet reaches its destination instead of coming back -
+				// surface it through the error callbacks instead of silently dropping it.
+				if err := f.b.CancelFleet(f.fleet.ID); err != nil {
+					for _, clb := range f.errorCallbacks {
+						clb(err)
+					}
+				}
 			}()
 		}
 
