@@ -131,7 +131,7 @@ func extractEspionageReportMessageIDsFromDoc(doc *goquery.Document) ([]ogame.Esp
 				if messageType == ogame.Report {
 					for _, s := range s.Find(".lootPercentage").EachIter() {
 						if regexp.MustCompile(`%`).MatchString(s.Text()) {
-							report.LootPercentage, _ = strconv.ParseFloat(regexp.MustCompile(`: (\d+)%`).FindStringSubmatch(s.Text())[1], 64)
+							report.LootPercentage, _ = strconv.ParseFloat(utils.Group(regexp.MustCompile(`: (\d+)%`).FindStringSubmatch(s.Text()), 1), 64)
 							report.LootPercentage /= 100
 						}
 					}
