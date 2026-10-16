@@ -232,7 +232,7 @@ func (b *OGame) IsUnderAttack(opts ...Option) (bool, error) {
 
 // GetCachedPlayer returns cached player infos
 func (b *OGame) GetCachedPlayer() ogame.UserInfos {
-	return b.cache.player
+	return b.cacheSnapshot().player
 }
 
 // GetCachedPreferences returns cached preferences

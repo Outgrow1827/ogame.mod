@@ -49,7 +49,7 @@ func (b *OGame) wrapLoginWithBearerToken(token string) (useToken, usePhpSessID b
 func (b *OGame) wrapLoginWithExistingCookies() (useCookies, usePhpSessID bool, err error) {
 	fn := func() (bool, bool, error) {
 		token := utils.Or(b.bearerToken, b.getBearerTokenFromCookie())
-		phpSessID := utils.Or(b.cache.ogameSession, b.getPhpSessIDFromCookie())
+		phpSessID := utils.Or(b.cacheSnapshot().ogameSession, b.getPhpSessIDFromCookie())
 		useCookies, usePhpSessID, err = b.loginWithBearerToken(token, phpSessID)
 		return useCookies, usePhpSessID, err
 	}
@@ -193,13 +193,14 @@ func (b *OGame) loginPart2(server gameforge.Server) (err error) {
 	// Get server data
 	start := time.Now()
 	b.server = server
-	b.cache.serverData, err = getServerData(b.ctx, b.device, b.server.Number, b.server.Language)
+	serverData, err := getServerData(b.ctx, b.device, b.server.Number, b.server.Language)
 	if err != nil {
 		return err
 	}
+	b.updateCache(func(c *cacheData) { c.serverData = serverData })
 	lang := sanitizeServerLang(server.Language)
 	b.language = lang
-	b.cache.serverURL = fmt.Sprintf("https://s%d-%s.ogame.gameforge.com", server.Number, lang)
+	b.updateCache(func(c *cacheData) { c.serverURL = fmt.Sprintf("https://s%d-%s.ogame.gameforge.com", server.Number, lang) })
 	b.debug("get server data", time.Since(start))
 	return nil
 }
@@ -207,7 +208,7 @@ func (b *OGame) loginPart2(server gameforge.Server) (err error) {
 func (b *OGame) loginPart3(userAccount gameforge.Account, page *parser.OverviewPage) error {
 	var ext extractor.Extractor = v12_0_0.NewExtractor()
 
-	if ogVersion, err := version.NewVersion(sanitizeServerVersion(b.cache.serverData.Version)); err == nil {
+	if ogVersion, err := version.NewVersion(sanitizeServerVersion(b.cacheSnapshot().serverData.Version)); err == nil {
 		ext = getExtractorFor(ogVersion)
 		ext.SetLanguage(b.language)
 		ext.SetLifeformEnabled(page.ExtractLifeformEnabled())
@@ -222,8 +223,8 @@ func (b *OGame) loginPart3(userAccount gameforge.Account, page *parser.OverviewP
 	}
 
 	b.debug("extract information from html")
-	b.cache.ogameSession = page.ExtractOGameSession()
-	if b.cache.ogameSession == "" {
+	b.updateCache(func(c *cacheData) { c.ogameSession = page.ExtractOGameSession() })
+	if b.cacheSnapshot().ogameSession == "" {
 		return gameforge.ErrBadCredentials
 	}
 
@@ -232,7 +233,7 @@ func (b *OGame) loginPart3(userAccount gameforge.Account, page *parser.OverviewP
 		b.error(err)
 	}
 	serverLoc := serverTime.Location()
-	b.cache.location = serverLoc
+	b.updateCache(func(c *cacheData) { c.location = serverLoc })
 
 	ext.SetLocation(serverLoc)
 	b.extractor = ext
@@ -242,10 +243,10 @@ func (b *OGame) loginPart3(userAccount gameforge.Account, page *parser.OverviewP
 		b.error(err)
 		return err
 	}
-	b.cache.CachedPreferences = preferencesPage.ExtractPreferences()
-	language := b.cache.serverData.Language
-	if b.cache.CachedPreferences.Language != "" {
-		language = b.cache.CachedPreferences.Language
+	b.updateCache(func(c *cacheData) { c.CachedPreferences = preferencesPage.ExtractPreferences() })
+	language := b.cacheSnapshot().serverData.Language
+	if b.cacheSnapshot().CachedPreferences.Language != "" {
+		language = b.cacheSnapshot().CachedPreferences.Language
 	}
 	ext.SetLanguage(language)
 	b.extractor = ext
@@ -282,7 +283,7 @@ func isVGreaterThanOrEqual(v *version.Version, compareVersion string) bool {
 }
 
 func isOgameV13(b *OGame) bool {
-	if ogVersion, err := version.NewVersion(sanitizeServerVersion(b.cache.serverData.Version)); err == nil {
+	if ogVersion, err := version.NewVersion(sanitizeServerVersion(b.cacheSnapshot().serverData.Version)); err == nil {
 		return isVGreaterThanOrEqual(ogVersion, "13.0.0")
 	}
 	return false
