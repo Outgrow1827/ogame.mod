@@ -4,6 +4,9 @@ Log of changes in our fork. History below `v13-fix.3` is inherited from `ronnie3
 
 ## [Unreleased]
 
+### Fixed
+- **TLS could never be enabled** (`cmd/ogamed`, `cmd/ogamed-tbot`) - `enable-tls` was a `StringFlag` read with `c.Bool()` (always false), the `tls-key-file`/`tls-cert-file` env vars were swapped (`OGAMED_TLS_CERTFILE` fed the key path and vice versa), and the `~/.ogame/*.pem` defaults were passed to `StartTLS` with a literal `~`. Now a `BoolFlag`, correct env names and `~` expanded to the home directory. Reported by Whatsupp.
+
 ## v13-fix.5 — 2026-10-16 (Outgrow1827 fork)
 
 ### Added

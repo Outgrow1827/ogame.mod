@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -143,23 +144,23 @@ func main() {
 			Value:   "",
 			Sources: cli.EnvVars("OGAMED_AUTH_PASSWORD"),
 		},
-		&cli.StringFlag{
+		&cli.BoolFlag{
 			Name:    "enable-tls",
 			Usage:   "Enable TLS. Needs key.pem and cert.pem",
-			Value:   "false",
+			Value:   false,
 			Sources: cli.EnvVars("OGAMED_ENABLE_TLS"),
 		},
 		&cli.StringFlag{
 			Name:    "tls-key-file",
 			Usage:   "Path to key.pem",
 			Value:   "~/.ogame/key.pem",
-			Sources: cli.EnvVars("OGAMED_TLS_CERTFILE"),
+			Sources: cli.EnvVars("OGAMED_TLS_KEYFILE"),
 		},
 		&cli.StringFlag{
 			Name:    "tls-cert-file",
 			Usage:   "Path to cert.pem",
 			Value:   "~/.ogame/cert.pem",
-			Sources: cli.EnvVars("OGAMED_TLS_KEYFILE"),
+			Sources: cli.EnvVars("OGAMED_TLS_CERTFILE"),
 		},
 		&cli.BoolFlag{
 			Name:    "cors-enabled",
@@ -275,8 +276,9 @@ func start(ctx context.Context, c *cli.Command) error {
 		apiNewHostname = c.String("server-url")
 	}
 	enableTLS := c.Bool("enable-tls")
-	tlsKeyFile := c.String("tls-key-file")
-	tlsCertFile := c.String("tls-cert-file")
+	// the shell does not expand "~" in a flag default (or a quoted env var), so StartTLS got a literal "~/..." path
+	tlsKeyFile := expandHome(c.String("tls-key-file"))
+	tlsCertFile := expandHome(c.String("tls-cert-file"))
 	basicAuthUsername := c.String("basic-auth-username")
 	basicAuthPassword := c.String("basic-auth-password")
 	corsEnabled := c.Bool("cors-enabled")
@@ -555,4 +557,16 @@ func start(ctx context.Context, c *cli.Command) error {
 	}
 	log.Println("Disable TLS Support")
 	return e.Start(host + ":" + strconv.Itoa(port))
+}
+
+// expandHome turns a leading "~" or "~/" into the user home directory; other paths are returned unchanged.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, "~\\") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[1:])
 }
