@@ -4,6 +4,8 @@ Log of changes in our fork. History below `v13-fix.3` is inherited from `ronnie3
 
 ## [Unreleased]
 
+- **feat** (2026-10-21): Interstellar Anomaly Scanner (ID 45) as a facility: `InterstellarAnomalyScannerID`, `Facilities.InterstellarAnomalyScanner` (parsed from the `iaScanner` element), accepted by build calls.
+
 ### Fixed
 - **TLS could never be enabled** (`cmd/ogamed`, `cmd/ogamed-tbot`) - `enable-tls` was a `StringFlag` read with `c.Bool()` (always false), the `tls-key-file`/`tls-cert-file` env vars were swapped (`OGAMED_TLS_CERTFILE` fed the key path and vice versa), and the `~/.ogame/*.pem` defaults were passed to `StartTLS` with a literal `~`. Now a `BoolFlag`, correct env names and `~` expanded to the home directory. Reported by Whatsupp.
 

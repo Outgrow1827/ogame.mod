@@ -423,7 +423,8 @@ func (o ID) IsFacility() bool {
 		o == SpaceDockID ||
 		o == LunarBaseID ||
 		o == SensorPhalanxID ||
-		o == JumpGateID
+		o == JumpGateID ||
+		o == InterstellarAnomalyScannerID
 }
 
 // IsResourceBuilding returns either or not the id is a resource building
