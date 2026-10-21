@@ -35,11 +35,8 @@ func I64Ptr(v int64) *int64 {
 // Noop ...
 func Noop(_ ...any) {}
 
-// Clamp ensure the value is within a range
-// Group returns m[i] (eg. a regexp FindStringSubmatch/FindSubmatch capture group), or the zero value
-// when the regex didn't match (m == nil) or has fewer groups. Indexing the result directly
-// (FindStringSubmatch(s)[1]) panics as soon as OGame's HTML changes shape, taking down the whole
-// page extraction instead of just that one field.
+// Clamp ensures the value is within a range.
+// Group returns m[i], or the zero value when the regex did not match, so a changed HTML shape costs one field instead of the whole extraction.
 func Group[T any](m []T, i int) T {
 	var zero T
 	if i < 0 || i >= len(m) {

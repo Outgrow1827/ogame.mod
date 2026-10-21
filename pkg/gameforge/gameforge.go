@@ -639,9 +639,7 @@ func login(params *loginParams) (out *LoginResponse, err error) {
 
 	var by []byte
 	var statusCode int
-	// Retries once after solving a sha-256 proof-of-work challenge (gameforge's
-	// CHALLENGE_REQUIRED response) - the legacy visual-captcha challenge below is a
-	// different mechanism and still returns immediately without retrying here.
+	// Retries once after solving gameforge's sha-256 proof-of-work challenge; the visual captcha path is a different mechanism and returns immediately.
 	for {
 		req, err := postSessionsReq(params, gameEnvironmentID, platformGameID)
 		if err != nil {
@@ -736,9 +734,7 @@ type powChallengeResponse struct {
 	Instrumentation string `json:"instrumentation"`
 }
 
-// solvePowChallenge fetches and solves the sha-256 proof-of-work challenge required by
-// gameforge's spark-web login endpoint. Does not replicate the browser fingerprint gameforge
-// also collects.
+// solvePowChallenge fetches and solves the sha-256 proof-of-work challenge required by gameforge's spark-web login endpoint.
 func solvePowChallenge(ctx context.Context, client HttpClient, challengeID string) error {
 	req, err := http.NewRequest(http.MethodGet, powCaptchaBaseURL+"/api/challenge/"+challengeID, nil)
 	if err != nil {

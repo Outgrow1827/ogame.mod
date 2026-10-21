@@ -108,11 +108,7 @@ func PostToGameHandler(c echo.Context) error {
 	if len(c.QueryParams()) > 0 {
 		vals = c.QueryParams()
 	}
-	// The game's own "Empire view" widget still calls page=ajax&component=empire, a v13.0.0
-	// dead endpoint (405) - the Local Proxy just relayed it verbatim. Since we already know the
-	// working v13 shape (page=standalone), rewrite it here before forwarding instead of passing
-	// the browser's broken request through. page=standalone must be fetched via GET, not POST
-	// (matching getEmpireHtml) - POSTing it returns a generic "An error has occured!" text body.
+	// The game's Empire widget still calls the dead page=ajax&component=empire endpoint, so it is rewritten to the working page=standalone shape, which has to be fetched with GET.
 	isEmpireRewrite := vals.Get("component") == "empire" && vals.Get("page") == "ajax"
 	if isEmpireRewrite {
 		vals = url.Values{"page": {"standalone"}, "component": {"empire"}, "planetType": {vals.Get("planetType")}}
@@ -228,9 +224,6 @@ func replaceHostnameWithRegxp(bot *wrapper.OGame, pageHTML []byte, r *http.Reque
 	}
 	for idx, regex := range regexes {
 		replaceStr := requestHostname
-		// if bot.apiNewHostname != "" {
-		// 	replaceStr = bot.apiNewHostname
-		// }
 
 		if idx > 0 {
 			replaceStr = strings.ReplaceAll(replaceStr, `/`, `\/`)
@@ -248,9 +241,6 @@ func removeCookiesBanner(pageHTML []byte) []byte {
 	pageHTMLstr := string(pageHTML)
 	pageHTMLstr = strings.ReplaceAll(pageHTMLstr, "https://consent.gameforge.com/cookiebanner.js", "")
 	pageHTMLstr = strings.ReplaceAll(pageHTMLstr, "https://consent-sandbox.gameforge.com/cookiebanner.js", "")
-	// regex := `<script[^>]*id="cookiebanner"[^>]*>[\s\S]*?</script>`
-	// re := regexp.MustCompile(regex)
-	// return re.ReplaceAll(pageHTML, []byte(""))
 	return []byte(pageHTMLstr)
 }
 

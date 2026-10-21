@@ -205,21 +205,13 @@ type ExpeditionMessage struct {
 	Resources  Resources
 	Ships      ShipsInfos
 	CreatedAt  time.Time
-	// GlobalTypeID is the raw in-game message type (data-raw-messagetype): 41 for a normal
-	// expedition result, 61 for an AutoDiscovery (LfDiscovery) result. Both share the same
-	// "Expeditions" message tab in-game (confirmed against OGLight TBot's own message-tab
-	// handling, tabID 22 "expeditions & discoveries"), so this tells the two apart.
+	// GlobalTypeID is the raw in-game message type (data-raw-messagetype): 41 for a normal expedition result, 61 for an AutoDiscovery result, which share the same Expeditions tab.
 	GlobalTypeID int64
-	// DiscoveryType, ArtifactsFound and ArtifactsSize are only populated for AutoDiscovery
-	// (GlobalTypeID 61) results, from the message's data-raw-discoverytype/-artifactsfound/
-	// -artifactssize attributes. DiscoveryType is empty for a normal LF-research discovery.
+	// DiscoveryType, ArtifactsFound and ArtifactsSize are only populated for AutoDiscovery (GlobalTypeID 61) results; DiscoveryType is empty for a normal LF-research discovery.
 	DiscoveryType  string
 	ArtifactsFound int64
 	ArtifactsSize  string
-	// LifeformDiscovered/LifeformGainedExperience/LifeformAlreadyOwned populate when
-	// DiscoveryType == "lifeform-xp" (data-raw-lifeformdiscovered/-lifeformgainedexperience/
-	// -lifeformalreadyowned) - confirmed via HAR capture 2026-08-29, distinct data-raw-* set
-	// from the artifacts case even though both share GlobalTypeID 61.
+	// LifeformDiscovered/LifeformGainedExperience/LifeformAlreadyOwned populate when DiscoveryType == "lifeform-xp", from the message's data-raw-lifeform* attributes.
 	LifeformDiscovered       string
 	LifeformGainedExperience int64
 	LifeformAlreadyOwned     bool

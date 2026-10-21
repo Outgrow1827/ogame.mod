@@ -84,11 +84,7 @@ type OGame struct {
 	apiNewHostname        string
 	captchaCallback       gameforge.CaptchaSolver
 	device                *device.Device
-	// cacheMu guards every field of cache except planets (which has its own mutex). The struct is
-	// documented as safe for concurrent use, but these fields used to be read and written from
-	// concurrent HTTP-handler / chat goroutines with no lock at all (eg. one request reading
-	// the token while another page response overwrote it). Always go through cacheSnapshot() /
-	// updateCache() instead of touching b.cache.<field> directly.
+	// cacheMu guards every cache field except planets, which has its own mutex; go through cacheSnapshot() / updateCache() instead of touching b.cache.<field> directly.
 	cacheMu sync.RWMutex
 	cache   struct {
 		cacheData
@@ -2631,10 +2627,7 @@ func (b *OGame) buyOfferOfTheDay() error {
 		if err != nil {
 			return err
 		}
-		// v13 wraps the import/export page in a JSON envelope: {"content":{"trader":"<html>"},"newAjaxToken":"..."}.
-		// extractOfferOfTheDayFromJSON (pkg/extractor/v12_0_0) unwraps this envelope itself, so pageHTML
-		// is kept as the raw JSON below - only the token is pulled out here separately, since the
-		// extractor doesn't return it.
+		// v13 wraps the import/export page in a JSON envelope, which extractOfferOfTheDayFromJSON unwraps itself, so the raw JSON is kept here and only the token is pulled out separately.
 		var importExportResp struct {
 			NewAjaxToken string `json:"newAjaxToken"`
 		}
@@ -2895,12 +2888,8 @@ func (b *OGame) getLfBonusesForCelestial(celestialID ogame.CelestialID) (out oga
 	return bonuses, nil
 }
 
-// getDiscoveryCooldown reads the account-wide "search for life forms again in X" cooldown shown
-// on the overview page (`.planetDiscoverIcons.planetDiscoverUnavailable`, `data-tooltip-title`).
-// This is separate from per-system position availability (GetPositionsAvailableForDiscoveryFleet) -
-// confirmed live 2026-08-29 via a real overview page capture that the account can be on a
-// multi-day cooldown for the discovery action itself, which no amount of per-system scanning can
-// see around. Zero duration + no error means no cooldown is active (fully available now).
+// getDiscoveryCooldown reads the account-wide "search for life forms again in X" cooldown from the overview page, which per-system scanning cannot see around.
+// Zero duration and no error means no cooldown is active.
 func (b *OGame) getDiscoveryCooldown(celestialID ogame.CelestialID) (time.Duration, error) {
 	pageHTML, err := b.getPageContent(url.Values{
 		"page":      {"ingame"},
@@ -2929,9 +2918,7 @@ func (b *OGame) getDiscoveryCooldown(celestialID ogame.CelestialID) (time.Durati
 }
 
 // parseDiscoveryCooldownDuration extracts a "4d 21h 54m 21s"-style duration from the tooltip text.
-// Any of the four components can be absent (e.g. "21m 3s" alone), so each is matched independently
-// rather than requiring all four - a partial mismatch degrades to whatever components did match
-// instead of returning zero and silently ignoring a real cooldown.
+// Each component is matched independently, so a partial match degrades to what did match instead of returning zero.
 func parseDiscoveryCooldownDuration(text string) time.Duration {
 	days := regexp.MustCompile(`(\d+)\s*d`).FindStringSubmatch(text)
 	hours := regexp.MustCompile(`(\d+)\s*h`).FindStringSubmatch(text)
@@ -2971,10 +2958,8 @@ func (b *OGame) getArtifacts(celestialID ogame.CelestialID) (collected int64, ma
 	if err != nil {
 		return 0, 0, err
 	}
-	// class="slot " can carry a trailing space before the closing quote (confirmed via a real
-	// HAR capture, 2026-08-27) when no extra CSS class is appended - the old `class="slot">`
-	// literal never matched that, silently reporting "unable to find artifacts counter" even
-	// when the account has Artifacts unlocked and the counter is right there in the page.
+	// class="slot " can carry a trailing space before the closing quote, which the old `class="slot">` literal never matched,
+	// so the artifacts counter was reported as missing even when it was there in the page.
 	rgx := regexp.MustCompile(`id="slot01"\s+class="slot[^"]*"\s*>\s*[^:<]*:\s*([\d.,]+)\s*/\s*([\d.,]+)`)
 	m := rgx.FindSubmatch(pageHTML)
 	if len(m) < 3 {
@@ -4209,10 +4194,7 @@ func (b *OGame) deleteAllMessagesFromTab(tabID ogame.MessagesTabID) error {
 		"showTrash":    {"false"},
 		"token":        {token},
 	}
-	// Unlike deleteMessage (single delete), this was missing asJson=1 - without it the
-	// game re-renders the full messages page as HTML instead of returning the JSON envelope,
-	// so json.Unmarshal below always failed with "invalid character '<' looking for beginning
-	// of value". The failure was previously invisible because callers ignored it entirely.
+	// asJson=1 is required here, otherwise the game re-renders the messages page as HTML and the JSON unmarshal below always fails with "invalid character '<'".
 	pageHTML, err := b.postPageContent(url.Values{"page": {"componentOnly"}, "component": {"messages"}, "asJson": {"1"}, "action": {"flagDeleteAll"}}, payload)
 	if err != nil {
 		return err

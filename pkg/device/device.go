@@ -244,9 +244,7 @@ func (f FilePersistor) Save(fprt *JsFingerprint) error {
 	return nil
 }
 
-// matchesConfiguredParams reports whether a previously persisted fingerprint
-// still matches the device params currently configured on the builder. If
-// any explicitly-set param differs, the fingerprint is considered stale.
+// matchesConfiguredParams reports whether a persisted fingerprint still matches the configured device params; any explicitly-set difference makes it stale.
 func (d *Builder) matchesConfiguredParams(fprt *JsFingerprint) bool {
 	if d.osName != "" && string(d.osName) != fprt.OsName {
 		return false
@@ -418,9 +416,7 @@ func (d *Builder) Build() (*Device, error) {
 
 	fprt, err := d.persistor.Load()
 	if err == nil && fprt != nil && !d.matchesConfiguredParams(fprt) {
-		// Persisted fingerprint no longer matches the currently configured device
-		// params (instance_settings.json DeviceConf changed) - force a rebuild
-		// instead of silently keeping stale values forever.
+		// A persisted fingerprint that no longer matches the configured device params is rebuilt instead of being kept stale forever.
 		fprt = nil
 	}
 	if fprt == nil {

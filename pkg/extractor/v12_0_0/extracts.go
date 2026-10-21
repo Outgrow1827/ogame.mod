@@ -13,10 +13,7 @@ import (
 	"time"
 )
 
-// extractOfferOfTheDayFromJSON handles the v13+ schema, where the importexport
-// panel is returned as a JSON envelope (content.trader holds the HTML fragment)
-// and the trade token is the envelope's newAjaxToken, since the fragment no
-// longer embeds a "var token" script variable.
+// The v13+ importexport panel is a JSON envelope: content.trader holds the HTML fragment and the trade token is the envelope's newAjaxToken.
 func extractOfferOfTheDayFromJSON(pageHTML []byte) (price int64, importToken string, planetResources ogame.PlanetResources, multiplier ogame.Multiplier, err error) {
 	var wrapper struct {
 		Content struct {

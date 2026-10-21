@@ -75,12 +75,7 @@ func extractCombatReportMessagesFromDoc(doc *goquery.Document) ([]ogame.CombatRe
 						report.Metal = resource.Amount
 					}
 				}
-				// Loot/DebrisField used to be scraped from `span.msg_content div.combatLeftSide span`
-				// text/title, a markup structure the current game version's message HTML no longer
-				// uses (confirmed live 2026-08-29: real combat report HTML uses .basicInfo/.miscInfo
-				// with .msg_ctn spans instead) - that selector silently matched nothing, so Loot and
-				// DebrisField always came back 0 regardless of the real result. Both are computed
-				// directly from data-raw-result JSON instead, which is stable across markup changes.
+				// Loot and DebrisField come from the data-raw-result JSON, because the old markup selector no longer matches the current message HTML and always returned 0.
 				report.Loot = report.Metal + report.Crystal + report.Deuterium
 				for _, resource := range result.Debris.Resources {
 					report.DebrisField += resource.Amount

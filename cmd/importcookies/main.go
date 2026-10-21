@@ -1,6 +1,4 @@
-// importcookies loads a Netscape-format cookies.txt file (e.g. exported from a browser via the
-// Cookie-Editor extension) into ogamed's persistent cookie jar for a given device, so ogamed can
-// reuse an already-established browser session instead of performing its own login handshake.
+// importcookies loads a Netscape-format cookies.txt into ogamed's persistent cookie jar for a device, so ogamed reuses an existing browser session instead of logging in again.
 package main
 
 import (
